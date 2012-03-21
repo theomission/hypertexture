@@ -19,7 +19,7 @@ int font_Init()
 	// init program
 	if(!g_texFont)
 	{
-		FILE* fp = fopen("Arial.ttf", "rb");
+		FILE* fp = fopen("Vera.ttf", "rb");
 		if(!fp)
 			return 0;
 		fseek(fp, 0, SEEK_END);
@@ -54,6 +54,7 @@ int font_Init()
 
 void font_Print(float x, float y, const char* str, const Color& color, float size)
 {
+	if(!g_texFont) return;
 	static GLint s_texLoc ;
 	static int first = 1;
 	if(first)

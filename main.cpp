@@ -47,20 +47,9 @@ static int g_frameCount;
 static int g_frameSampleCount;
 static unsigned long long g_frameSampleTime;
 static unsigned long long g_lastTime = 0;
-static int g_skyEnabled = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Helpers
-
-template<typename T>
-static std::function<T()> GetSkyParam(const std::shared_ptr<Sky>& sky, const T Sky::Params::*member) {
-	return [=, &sky](){ return sky->GetParams().*member; };
-}
-
-template<typename T>
-static std::function<void(const T&)> SetSkyParam(std::shared_ptr<Sky>& sky, T Sky::Params::*member) {
-	return [=, &sky](const T& val) { sky->GetParams().*member = val; };
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
@@ -91,30 +80,6 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
 	std::make_shared<TweakVector>("cam.eye", &g_defaultEye, vec3{8.f, 0.f, 2.f}),
 	std::make_shared<TweakVector>("cam.focus", &g_defaultFocus),
 	std::make_shared<TweakVector>("cam.up", &g_defaultUp, vec3{0,0,1}),
-	std::make_shared<TweakVector>("lighting.sundir", &g_sundir, vec3{-1,-1,1}),
-	std::make_shared<TweakColor>("lighting.suncolor", &g_suncolor, Color{1,1,1}),
-	std::make_shared<TweakFloat>("lighting.sunintensity", &g_sunIntensity, 1.f),
-	std::make_shared<TweakFloat>("planet.drawErrorThreshold", &g_tileDrawErrorThreshold, 15.f),
-	std::make_shared<TweakFloat>("sky.m_Kr", 
-		GetSkyParam(g_world.m_sky, &Sky::Params::m_Kr), 
-		SetSkyParam(g_world.m_sky, &Sky::Params::m_Kr),
-		0.0015),
-	std::make_shared<TweakFloat>("sky.m_Km", 
-		GetSkyParam(g_world.m_sky, &Sky::Params::m_Km), 
-		SetSkyParam(g_world.m_sky, &Sky::Params::m_Km),
-		0.0025),
-	std::make_shared<TweakFloat>("sky.m_rayleighScaleHeight",
-		GetSkyParam(g_world.m_sky, &Sky::Params::m_rayleighScaleHeight), 
-		SetSkyParam(g_world.m_sky, &Sky::Params::m_rayleighScaleHeight),
-		0.25, Limits<float>{0.f,1.f}),
-	std::make_shared<TweakFloat>("sky.m_mieScaleHeight",
-		GetSkyParam(g_world.m_sky, &Sky::Params::m_mieScaleHeight), 
-		SetSkyParam(g_world.m_sky, &Sky::Params::m_mieScaleHeight),
-		0.15, Limits<float>{0.f,1.f}),
-	std::make_shared<TweakFloat>("sky.m_g", 
-		GetSkyParam(g_world.m_sky, &Sky::Params::m_g), 
-		SetSkyParam(g_world.m_sky, &Sky::Params::m_g),
-		0.8, Limits<float>{-1.f,1.f}),
 };
 
 void SaveCurrentCamera()
@@ -128,8 +93,14 @@ void SaveCurrentCamera()
 // Settings vars
 static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
 	std::make_shared<TweakBool>("debug.wireframe", &g_wireframe, false),
-	std::make_shared<TweakBool>("debug.draw", &g_dbgdrawEnabled, false),
-	std::make_shared<TweakBool>("debug.drawdepth", &g_dbgdrawEnableDepthTest, true),
+	std::make_shared<TweakBool>("debug.draw", 
+			[](){ return dbgdraw_IsEnabled(); },
+			[](bool enabled) { dbgdraw_SetEnabled(int(enabled)); },
+			false),
+	std::make_shared<TweakBool>("debug.drawdepth", 
+			[](){ return dbgdraw_IsDepthTestEnabled(); },
+			[](bool enabled) { dbgdraw_SetDepthTestEnabled(int(enabled)); },
+			true),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,61 +121,12 @@ void camera_SetDebugCamera(bool useDebug)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Menu creation
-static std::shared_ptr<SubmenuMenuItem> MakeWorldMenu(const char* name, PlanetAndSky& world)
-{
-	std::vector<std::shared_ptr<MenuItem>> worldMenu = {
-		std::make_shared<FloatSliderMenuItem>("g", 
-			GetSkyParam(world.m_sky, &Sky::Params::m_g), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_g),
-			0.1f), 
-		std::make_shared<FloatSliderMenuItem>("H (mie scale height)",
-			GetSkyParam(world.m_sky, &Sky::Params::m_mieScaleHeight), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_mieScaleHeight),
-			0.01f), 
-		std::make_shared<FloatSliderMenuItem>("K (mie base density)",
-			GetSkyParam(world.m_sky, &Sky::Params::m_Km), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_Km),
-			1e-4f), 
-		std::make_shared<FloatSliderMenuItem>("H (rayleigh scale height)",
-			GetSkyParam(world.m_sky, &Sky::Params::m_rayleighScaleHeight), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_rayleighScaleHeight),
-			0.01f), 
-		std::make_shared<FloatSliderMenuItem>("K (rayleigh base density)",
-			GetSkyParam(world.m_sky, &Sky::Params::m_Kr), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_Kr),
-			1e-3f), 
-		std::make_shared<FloatSliderMenuItem>("Red Lambda",
-			GetSkyParam(world.m_sky, &Sky::Params::m_lambdaR), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_lambdaR),
-			1e-3f), 
-		std::make_shared<FloatSliderMenuItem>("Green Lambda",
-			GetSkyParam(world.m_sky, &Sky::Params::m_lambdaG), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_lambdaG),
-			1e-3f), 
-		std::make_shared<FloatSliderMenuItem>("Blue Lambda",
-			GetSkyParam(world.m_sky, &Sky::Params::m_lambdaB), 
-			SetSkyParam(world.m_sky, &Sky::Params::m_lambdaB),
-			1e-3f), 
-		std::make_shared<ButtonMenuItem>("recompute sky textures", 
-			[&world](){ world.m_sky->RecomputeTextures(); }),
-		std::make_shared<ButtonMenuItem>("reset params", 
-			[&world](){ world.m_sky->GetParams().Reset(); }),
-	};
-
-	return std::make_shared<SubmenuMenuItem>(name, worldMenu);
-}
-
 static std::shared_ptr<TopMenuItem> MakeMenu()
 {
 	std::vector<std::shared_ptr<MenuItem>> cameraMenu = {
 		std::make_shared<VecSliderMenuItem>("eye", &g_defaultEye),
 		std::make_shared<VecSliderMenuItem>("focus", &g_defaultFocus),
 		std::make_shared<ButtonMenuItem>("save current camera", SaveCurrentCamera)
-	};
-	std::vector<std::shared_ptr<MenuItem>> lightingMenu = {
-		std::make_shared<VecSliderMenuItem>("sundir", &g_sundir),
-		std::make_shared<ColorSliderMenuItem>("suncolor", &g_suncolor),
-		std::make_shared<FloatSliderMenuItem>("sunintensity", &g_sunIntensity),
 	};
 	std::vector<std::shared_ptr<MenuItem>> debugMenu = {
 		std::make_shared<ButtonMenuItem>("reload shaders", render_RefreshShaders),
@@ -213,19 +135,15 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 		std::make_shared<IntSliderMenuItem>("debug texture id", 
 			[&g_debugTexture](){return int(g_debugTexture);},
 			[&g_debugTexture](int val) { g_debugTexture = static_cast<unsigned int>(val); }),
-		std::make_shared<BoolMenuItem>("debug rendering", &g_dbgdrawEnabled),
-		std::make_shared<BoolMenuItem>("debug depth test", &g_dbgdrawEnableDepthTest),
+		std::make_shared<BoolMenuItem>("debug rendering", 
+			[](){ return dbgdraw_IsEnabled(); },
+			[](bool enabled) { dbgdraw_SetEnabled(int(enabled)); }),
+		std::make_shared<BoolMenuItem>("debug depth test", 
+			[](){ return dbgdraw_IsDepthTestEnabled(); },
+			[](bool enabled) { dbgdraw_SetDepthTestEnabled(int(enabled)); }),
 	};
-	std::vector<std::shared_ptr<MenuItem>> planetMenu = {
-		std::make_shared<FloatSliderMenuItem>("draw error threshold", &g_tileDrawErrorThreshold), 
-		std::make_shared<BoolMenuItem>("sky enabled", &g_skyEnabled),
-	};
-	g_worldsMenu = std::make_shared<SubmenuMenuItem>("worlds");
 	std::vector<std::shared_ptr<MenuItem>> tweakMenu = {
 		std::make_shared<SubmenuMenuItem>("cam", cameraMenu),
-		std::make_shared<SubmenuMenuItem>("lighting", lightingMenu),
-		g_worldsMenu,
-		std::make_shared<SubmenuMenuItem>("planet", planetMenu),
 		std::make_shared<SubmenuMenuItem>("debug", debugMenu),
 	};
 	std::vector<std::shared_ptr<MenuItem>> topMenu = {
@@ -323,24 +241,11 @@ void draw(Framedata& frame)
 	if(g_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-	vec3 normalizedSundir = Normalize(g_sundir);
-
 	////////////////////////////////////////////////////////////////////////////////
-	g_world.m_skyParams.Update(*g_world.m_sky);
-
-	checkGlError("draw(): pre planet");
-	g_world.m_planetTs->Render(frame.m_tiles,
-		frame.m_tilesNum, normalizedSundir, *g_curCamera, g_world.m_skyParams);
-	checkGlError("draw(): post planet");
-	
-	if(g_skyEnabled) 
-	{
-		g_world.m_sky->Render(g_world.m_skyParams, *g_curCamera, normalizedSundir);
-		checkGlError("draw(): post sky");
-	}
-	
 	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
+
+	// TODO demo code here
 	
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
@@ -352,6 +257,7 @@ void draw(Framedata& frame)
 
 	if(g_menuEnabled)
 		menu_Draw();
+
 	checkGlError("draw(): post menu");
 
 	{
@@ -360,20 +266,15 @@ void draw(Framedata& frame)
 		snprintf(fpsStr, sizeof(fpsStr) - 1, "%.2f", g_fpsDisplay);
 		font_Print(g_screen.m_width-180,24, fpsStr, fpsCol, 16.f);
 
-		vec3 diff = g_curCamera->GetPos() - g_world.m_planet->GetPosition();
-		float altitude = Length(diff) - g_world.m_planet->GetSurfaceRadius();
-		snprintf(fpsStr, 31, "altitude: %.2f", altitude);
-		font_Print(g_screen.m_width-180,40, fpsStr, fpsCol, 16.f);
-
 		char cameraPosStr[64] = {};
 		const vec3& pos = g_curCamera->GetPos();
 		snprintf(cameraPosStr, sizeof(cameraPosStr) - 1, "eye: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
-		font_Print(g_screen.m_width-180, 56, cameraPosStr, fpsCol, 16.f);
+		font_Print(g_screen.m_width-180, 40, cameraPosStr, fpsCol, 16.f);
 	}
 
 	task_RenderProgress();
-	
 	checkGlError("end draw");
+
 	SDL_GL_SwapBuffers();
 	checkGlError("swap");
 }
@@ -384,53 +285,6 @@ void InitializeShaders(void)
 	checkGlError("InitializeShaders");
 }
 
-void createWorldObjects()
-{
-	Planet::Params planetParams;
-
-	planetParams.m_surfaceRadius = 6000; 
-	planetParams.m_atmosphereRadius = planetParams.m_surfaceRadius + 100; 
-	planetParams.m_rotationTilt.y = M_PI * 10.f/180.f;
-	planetParams.m_position.z = -planetParams.m_surfaceRadius;
-
-	// TODO: this param thing is silly for the sky (but I forget why I made this comment)
-	Sky::Params skyParams;
-
-	g_world.m_planet = std::make_shared<Planet>(planetParams);
-	g_world.m_sky = std::make_shared<Sky>(skyParams, g_world.m_planet);
-	// create planetTs after creating brushes and strokes
-
-	g_worldsMenu->AppendChild(MakeWorldMenu("world 1", g_world));
-}
-
-void setupWorldTerrain()
-{
-	auto mountainBrush = g_brushes.CreateBrush("shaders/brushes/mountain.glsl");
-
-	Terrain* terrain = g_world.m_planet->GetTerrain().get();
-
-	RidgedMultiFractalStroke::Params rmfParams;
-	rmfParams.m_octaves = 64;
-	rmfParams.m_offset = 0.80;
-	rmfParams.m_lacunarity = 1.9f;
-	rmfParams.m_gain = 1.9f;
-	rmfParams.m_h = 0.4f;
-	rmfParams.m_initialFreq = 1.5f;
-	terrain->AddStroke(std::make_shared<RidgedMultiFractalStroke>(rmfParams));
-
-	//PointStroke::Pattern pattern;
-	//pattern.m_type = PointStroke::TYPE_RandomPoints;
-	//pattern.m_seed = 0;
-	//pattern.m_radiusMean = 1000.f;
-	//pattern.m_radiusVar = 200.f;
-	//pattern.m_intensityMean = 1.0f;
-	//pattern.m_intensityVar = 0.1f;
-	//pattern.m_count = 10;
-	//terrain->AddStroke(std::make_shared<PointStroke>(mountainBrush, pattern));
-	
-	g_world.m_planetTs = std::make_shared<PlanetTessellation>(g_world.m_planet);
-}
-
 void initialize(void)
 {
 	task_Startup(3);
@@ -438,30 +292,21 @@ void initialize(void)
 	InitializeShaders();
 	framemem_Init();
 	font_Init();
-	glslnoise_Init();
-	sky_Init();
-	terrain_Init();
-	planet_Init();
 	menu_SetTop(MakeMenu());
 	ui_Init();
-	createWorldObjects();
-	setupWorldTerrain();
 
-	g_mainCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect, 1.f, 100000.f);
-	g_debugCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect, 1.f, 100000.f);
+	g_mainCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
+	g_debugCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
 
 	tweaker_LoadVars("tweaker.txt", g_tweakVars);
 	g_mainCamera->LookAt(g_defaultFocus, g_defaultEye, Normalize(g_defaultUp));
 	g_curCamera = g_mainCamera;
 
-	g_world.m_sky->RecomputeTextures();
-	
 	tweaker_LoadVars(".settings", g_settingsVars);
 }
 
 void update(Framedata& frame)
 {
-
 	struct timespec current_time;
 	clock_gettime(CLOCK_MONOTONIC, &current_time);
 	unsigned long long timeUsec = (unsigned long long)(current_time.tv_sec * 1000000) +
@@ -490,12 +335,12 @@ void update(Framedata& frame)
 	}
 
 	g_curCamera->Compute();
-	g_world.m_planetTs->Update(frame, *g_mainCamera);
-	g_world.m_planet->Update();
 
 	menu_Update(g_dt);		
+
 	gputask_Join();
 	gputask_Kick();
+
 	task_Update();
 }
 
@@ -702,11 +547,6 @@ int main(void)
 
 	tweaker_SaveVars("tweaker.txt", g_tweakVars);
 	tweaker_SaveVars(".settings", g_settingsVars);
-
-	// destroy planet in main so the pool allocator deallocs after the PlanetTiles (which depend on that allocator)
-	g_world.m_planet.reset();
-	g_world.m_planetTs.reset();
-	g_world.m_sky.reset();
 
 	SDL_Quit();
 

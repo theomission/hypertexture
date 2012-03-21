@@ -7,6 +7,7 @@
 #include "render.hh"
 #include "matrix.hh"
 #include "camera.hh"
+#include "common.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
 // types
@@ -90,15 +91,21 @@ void dbgdraw_Init()
 	g_dbgSphereGeom = render_GenerateSphereGeom(20, 10);
 }
 
-void dbgdraw_Enable()
+void dbgdraw_SetEnabled(int enabled)
 {
-	g_dbgdrawEnabled = 1;
+	ASSERT(!(enabled & ~1));
+	g_dbgdrawEnabled = enabled;
 }
 
-void dbgdraw_Disable()
+int dbgdraw_IsEnabled() { return g_dbgdrawEnabled; }
+
+void dbgdraw_SetDepthTestEnabled(int enabled)
 {
-	g_dbgdrawEnabled = 0;
+	ASSERT(!(enabled & ~1));
+	g_dbgdrawEnableDepthTest = enabled;
 }
+
+int dbgdraw_IsDepthTestEnabled() { return g_dbgdrawEnableDepthTest; }
 
 static void ddRenderAABBs(const mat4& projview);
 static void ddRenderOBBs(const mat4& projview);

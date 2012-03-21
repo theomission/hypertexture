@@ -4,12 +4,11 @@
 
 class Camera;
 
-extern int g_dbgdrawEnabled;
-extern int g_dbgdrawEnableDepthTest;
-
 void dbgdraw_Init();
-void dbgdraw_Enable();
-void dbgdraw_Disable();
+void dbgdraw_SetEnabled(int enabled);
+int dbgdraw_IsEnabled();
+void dbgdraw_SetDepthTestEnabled(int enabled);
+int dbgdraw_IsDepthTestEnabled();
 void dbgdraw_Render(const Camera& camera);
 void dbgdraw_Clear();
 
