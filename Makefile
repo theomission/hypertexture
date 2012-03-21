@@ -5,7 +5,7 @@ endif
 
 COMPILE=g++
 DEFINES=
-NAME=demo
+NAME=hypertexture
 CPPFLAGS=-std=c++0x -MMD -MP -Wall -fno-math-errno -ffast-math -pthread -fno-exceptions -fno-rtti 
 
 ifeq ($(config),release)

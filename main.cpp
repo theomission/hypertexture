@@ -369,12 +369,23 @@ void move_camera(int dir)
 	g_curCamera->MoveBy(off);
 }
 
+void resize(int w, int h)
+{
+	g_screen.Resize(w,h);
+	g_mainCamera->SetAspect(g_screen.m_aspect);
+	g_debugCamera->SetAspect(g_screen.m_aspect);
+	g_mainCamera->ComputeViewFrustum();
+	g_debugCamera->ComputeViewFrustum();
+	glViewport(0,0,w,h);
+}
+
 int main(void)
 {
 	SDL_Event event;
 
-	SDL_SetVideoMode(g_screen.m_width, g_screen.m_height, 0, SDL_OPENGL);
+	SDL_SetVideoMode(g_screen.m_width, g_screen.m_height, 0, SDL_OPENGL | SDL_RESIZABLE);
 	glewInit();
+	glViewport(0,0,g_screen.m_width, g_screen.m_height);
 
 	//SDL_ShowCursor(g_menuEnabled ? SDL_ENABLE : SDL_DISABLE );
 	SDL_ShowCursor(SDL_ENABLE);
@@ -471,7 +482,22 @@ int main(void)
 						nextKeyTimer = 0.f;
 					}
 					break;
-
+	
+		
+				case SDL_VIDEORESIZE:
+				{
+					int w = Max(event.resize.w, 256);
+					int h = Max(event.resize.h, 256);
+					SDL_Surface* surface = SDL_SetVideoMode(w, h, 0,
+						SDL_OPENGL | SDL_RESIZABLE);
+					if(!surface) {
+						std::cerr << "Failed to resize window." << std::endl;
+						abort();
+					}
+					resize(event.resize.w, event.resize.h);
+				}
+					
+					break;
 				case SDL_QUIT:
 					done = 1;
 					break;
