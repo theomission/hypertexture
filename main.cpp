@@ -22,6 +22,7 @@
 #include "task.hh"
 #include "ui.hh"
 #include "gputask.hh"
+#include "hyper.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
 // globals
@@ -48,8 +49,7 @@ static int g_frameSampleCount;
 static unsigned long long g_frameSampleTime;
 static unsigned long long g_lastTime = 0;
 
-////////////////////////////////////////////////////////////////////////////////
-// Helpers
+static std::shared_ptr<Hypertexture> g_htex;
 
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
@@ -245,7 +245,7 @@ void draw(Framedata& frame)
 	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
 
-	// TODO demo code here
+	g_htex->Render(*g_curCamera, 10.f);
 	
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
@@ -279,13 +279,34 @@ void draw(Framedata& frame)
 	checkGlError("swap");
 }
 
-void InitializeShaders(void)
+void InitializeShaders()
 {
 	g_debugTexShader = render_CompileShader("shaders/debugtex2d.glsl", g_debugTexUniformNames);
 	checkGlError("InitializeShaders");
 }
 
-void initialize(void)
+void createHyperTexture()
+{
+	struct gendata {
+		float invradius;
+		vec3 center;
+	};
+
+	std::shared_ptr<gendata> data = std::make_shared<gendata>();
+	data->invradius = 1.f/0.5f;
+	data->center.Set(0.5f,1.0f,1.f);
+
+	g_htex = std::make_shared<Hypertexture>(256,
+	[=](float x, float y, float z)
+	{
+		vec3 pt(x,y,z);
+		float len = Length(pt - data->center);
+		float density = Max(1.f - len * data->invradius, 0.f);
+		return density;
+	});
+}
+
+void initialize()
 {
 	task_Startup(3);
 	dbgdraw_Init();
@@ -294,6 +315,7 @@ void initialize(void)
 	font_Init();
 	menu_SetTop(MakeMenu());
 	ui_Init();
+	hyper_Init();
 
 	g_mainCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
 	g_debugCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
@@ -303,6 +325,8 @@ void initialize(void)
 	g_curCamera = g_mainCamera;
 
 	tweaker_LoadVars(".settings", g_settingsVars);
+	
+	createHyperTexture();
 }
 
 void update(Framedata& frame)
@@ -392,6 +416,7 @@ int main(void)
 
 	glEnable(GL_TEXTURE_1D);
 	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_TEXTURE_3D);
 
 	initialize();
 

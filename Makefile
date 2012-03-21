@@ -49,6 +49,7 @@ OBJECTS := \
 	$(OBJDIR)/gputask.o \
 	$(OBJDIR)/poolmem.o \
 	$(OBJDIR)/ui.o \
+	$(OBJDIR)/hyper.o \
 
 .PHONY: clean strip
 
@@ -123,6 +124,9 @@ $(OBJDIR)/poolmem.o: poolmem.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 $(OBJDIR)/ui.o: ui.cpp
+	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
+
+$(OBJDIR)/hyper.o: hyper.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 -include $(OBJECTS:%.o=%.d)
