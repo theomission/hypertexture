@@ -294,7 +294,7 @@ void createHyperTexture()
 
 	std::shared_ptr<gendata> data = std::make_shared<gendata>();
 	data->invradius = 1.f/0.5f;
-	data->center.Set(0.5f,1.0f,1.f);
+	data->center.Set(0,0,0);
 
 	g_htex = std::make_shared<Hypertexture>(256,
 	[=](float x, float y, float z)

@@ -47,7 +47,8 @@ void Hypertexture::Compute()
 {
 	const int numCells = m_numCells;
 	auto cells = std::make_shared<std::vector<float>>(numCells*numCells*numCells);
-	auto runFunc = [cells, numCells, m_genFunc]() {
+	auto texels = std::make_shared<std::vector<unsigned char>>(cells->size());
+	auto runFunc = [cells, texels, numCells, m_genFunc]() {
 		float *data = &(*cells)[0];
 		float inc = 1.f / numCells;
 		vec3 coord(0,0,0);
@@ -66,29 +67,29 @@ void Hypertexture::Compute()
 			}
 			coord.z += inc;
 		}
-	};
-	
-	auto completeFunc = [cells, numCells, &m_ready, &m_tex]() {
+
 		auto range = std::minmax_element(cells->begin(), cells->end());
 		float invScale = 1.f/(*range.second - *range.first);
 		float minVal = *range.first;
-		std::vector<unsigned char> texels(cells->size());
-		std::transform(cells->begin(), cells->end(), texels.begin(),
+		std::transform(cells->begin(), cells->end(), texels->begin(),
 			[minVal, invScale](float density) 
 		{
 			float val = (density - minVal) * invScale;
 			return static_cast<unsigned char>(255 * Clamp(val, 0.f, 1.f));
 		});
+	};
+	
+	auto completeFunc = [texels, numCells, &m_ready, &m_tex]() {
 		// create opengl textures
 		glGenTextures(1, &m_tex);
 		glBindTexture(GL_TEXTURE_3D, m_tex);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 		glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, numCells, numCells, numCells, 0, GL_RED,
-			GL_UNSIGNED_BYTE, &texels[0]);
+			GL_UNSIGNED_BYTE, &(*texels)[0]);
 
 		checkGlError("Creating hypertexture");
 		m_ready = true;
@@ -123,28 +124,28 @@ static std::shared_ptr<Geom> CreateHypertextureBoxGeom()
 {
 	static float verts[] = {
 		1.f, 1.f, -1.f,
-		1.f, 1.f, 0.f,
+		1.f, 1.f, 1.f,
 
 		-1.f, 1.f, -1.f,
-		0.f, 1.f, 0.f,
-
-		-1.f, -1.f, -1.f,
-		0.f, 0.f, 0.f,
-
-		1.f, -1.f, -1.f,
-		1.f, 0.f, 0.f,
-
-		1.f, 1.f, 1.f,
-		1.f, 1.f, 1.f,
-
-		-1.f, 1.f, 1.f,
 		0.f, 1.f, 1.f,
 
-		-1.f, -1.f, 1.f,
+		-1.f, -1.f, -1.f,
 		0.f, 0.f, 1.f,
 
-		1.f, -1.f, 1.f,
+		1.f, -1.f, -1.f,
 		1.f, 0.f, 1.f,
+
+		1.f, 1.f, 1.f,
+		1.f, 1.f, 0.f,
+
+		-1.f, 1.f, 1.f,
+		0.f, 1.f, 0.f,
+
+		-1.f, -1.f, 1.f,
+		0.f, 0.f, 0.f,
+
+		1.f, -1.f, 1.f,
+		1.f, 0.f, 0.f,
 	};
 
 	const int vtxStride = sizeof(float) * 6;
