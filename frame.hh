@@ -1,0 +1,18 @@
+#pragma once
+
+////////////////////////////////////////////////////////////////////////////////
+class PlanetTile;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class Framedata
+{
+public:
+	int m_tilesNum;
+	int m_tilesMax;
+	const struct PlanetTile** m_tiles;
+};
+
+Framedata* frame_New();
+void frame_AppendTile(Framedata& frame, PlanetTile* tilePtr);
+

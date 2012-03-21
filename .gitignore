@@ -1,0 +1,8 @@
+*.swp
+*.o
+*.d
+*-d
+*-z
+tags
+.settings
+
