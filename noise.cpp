@@ -125,6 +125,26 @@ float Noise::Sample(float x, float y, float z) const
 	ylerp[1] = Lerp(v, xlerp[2], xlerp[3]);
 	return Lerp(w, ylerp[0], ylerp[1]);
 }
+	
+float Noise::FbmSample(const vec3& v, float h, float lacunarity, float octaves)
+{
+	int numOctaves = (int)octaves;
+	float remainder = octaves - (float)numOctaves;
+
+	vec3 pt = v;
+	float result = 0.f;
+	for(int i = 0; i < numOctaves; ++i)
+	{
+		result += Sample(pt) * powf(lacunarity, -h * i);
+		pt *= lacunarity;
+	}
+
+	if(remainder > 0.f) 
+	{
+		result += remainder * Sample(pt) * powf(lacunarity, -h * numOctaves);
+	}
+	return result;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 RidgedMultiFractal::RidgedMultiFractal(Noise& noise, int octaves, float offset,

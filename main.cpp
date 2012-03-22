@@ -51,6 +51,9 @@ static unsigned long long g_lastTime = 0;
 
 static std::shared_ptr<Hypertexture> g_htex;
 
+static Color g_sunColor;
+static vec3 g_sundir;
+
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
 enum DebugTexUniformLocType {
@@ -77,9 +80,11 @@ static int g_debugTextureSplit;
 // tweak vars
 extern float g_tileDrawErrorThreshold;
 static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
-	std::make_shared<TweakVector>("cam.eye", &g_defaultEye, vec3{8.f, 0.f, 2.f}),
+	std::make_shared<TweakVector>("cam.eye", &g_defaultEye, vec3(8.f, 0.f, 2.f)),
 	std::make_shared<TweakVector>("cam.focus", &g_defaultFocus),
-	std::make_shared<TweakVector>("cam.up", &g_defaultUp, vec3{0,0,1}),
+	std::make_shared<TweakVector>("cam.up", &g_defaultUp, vec3(0,0,1)),
+	std::make_shared<TweakVector>("lighting.sundir", &g_sundir, vec3(0,0,1)),
+	std::make_shared<TweakColor>("lighting.suncolor", &g_sunColor, Color(1,1,1)),
 };
 
 void SaveCurrentCamera()
@@ -128,6 +133,10 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 		std::make_shared<VecSliderMenuItem>("focus", &g_defaultFocus),
 		std::make_shared<ButtonMenuItem>("save current camera", SaveCurrentCamera)
 	};
+	std::vector<std::shared_ptr<MenuItem>> lightingMenu = {
+		std::make_shared<VecSliderMenuItem>("sundir", &g_sundir),
+		std::make_shared<ColorSliderMenuItem>("suncolor", &g_sunColor),
+	};
 	std::vector<std::shared_ptr<MenuItem>> debugMenu = {
 		std::make_shared<ButtonMenuItem>("reload shaders", render_RefreshShaders),
 		std::make_shared<BoolMenuItem>("wireframe", &g_wireframe),
@@ -142,12 +151,14 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 			[](){ return dbgdraw_IsDepthTestEnabled(); },
 			[](bool enabled) { dbgdraw_SetDepthTestEnabled(int(enabled)); }),
 	};
+
 	std::vector<std::shared_ptr<MenuItem>> tweakMenu = {
-		std::make_shared<SubmenuMenuItem>("cam", cameraMenu),
-		std::make_shared<SubmenuMenuItem>("debug", debugMenu),
+		std::make_shared<SubmenuMenuItem>("cam", std::move(cameraMenu)),
+		std::make_shared<SubmenuMenuItem>("lighting", std::move(lightingMenu)),
+		std::make_shared<SubmenuMenuItem>("debug", std::move(debugMenu)),
 	};
 	std::vector<std::shared_ptr<MenuItem>> topMenu = {
-		std::make_shared<SubmenuMenuItem>("tweak", tweakMenu)
+		std::make_shared<SubmenuMenuItem>("tweak", std::move(tweakMenu))
 	};
 	return std::make_shared<TopMenuItem>(topMenu);
 }
@@ -241,11 +252,13 @@ void draw(Framedata& frame)
 	if(g_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
+	vec3 normalizedSundir = Normalize(g_sundir);
+
 	////////////////////////////////////////////////////////////////////////////////
 	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
 
-	g_htex->Render(*g_curCamera, 10.f);
+	g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 	
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
@@ -287,21 +300,35 @@ void InitializeShaders()
 
 void createHyperTexture()
 {
-	struct gendata {
-		float invradius;
-		vec3 center;
-	};
+	std::shared_ptr<Noise> noise = std::make_shared<Noise>();
 
-	std::shared_ptr<gendata> data = std::make_shared<gendata>();
-	data->invradius = 1.f/0.5f;
-	data->center.Set(0,0,0);
-
+	const float radius = 0.50f;
+	const float innerRadius = 0.3f;
+	const float invdiff = 1.f/(radius - innerRadius);
+	const vec3 center(0.5);
 	g_htex = std::make_shared<Hypertexture>(256,
 	[=](float x, float y, float z)
 	{
 		vec3 pt(x,y,z);
-		float len = Length(pt - data->center);
-		float density = Max(1.f - len * data->invradius, 0.f);
+
+		//float alongLine = Dot(pt - lineStart, lineDir);
+		//vec3 closestPt = lineStart + lineDir * alongLine;
+		//closestPt.x += 0.1 * sinf(alongLine * 7.f); 
+		//closestPt.y += 0.1 * cosf(alongLine * 9.f); 
+	
+		// turbulence
+		vec3 diff = pt - center;
+		float len = Length(diff) ;
+		float n = 0.2 * (noise->FbmSample(pt, 0.7f, 2.f, 10));
+		len += n;
+
+		float outerDensity = 1.f - SmoothStep(radius - 0.01f, radius + 0.01f, len);
+		float innerDensity = SmoothStep(innerRadius - 0.01f, innerRadius + 0.01f, len);
+
+		float t = (len - innerRadius) * invdiff;
+		t = Clamp(t, 0.f, 1.f);
+		float density = Lerp(t, innerDensity, outerDensity);
+
 		return density;
 	});
 }

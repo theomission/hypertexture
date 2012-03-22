@@ -238,6 +238,13 @@ SubmenuMenuItem::SubmenuMenuItem(const std::string& name,
 	, m_pos(0)
 {
 }
+SubmenuMenuItem::SubmenuMenuItem(const std::string& name,
+	std::vector<std::shared_ptr<MenuItem>>&& children)
+	: MenuItem(name)
+	, m_pos(0)
+{
+	m_children.swap(children);
+}
 
 void SubmenuMenuItem::AppendChild(const std::shared_ptr<MenuItem>& item)
 {
@@ -356,6 +363,10 @@ TopMenuItem::TopMenuItem()
 {}
 
 TopMenuItem::TopMenuItem(const std::vector<std::shared_ptr<MenuItem>>& children)
+	: SubmenuMenuItem("top", children)
+{}
+
+TopMenuItem::TopMenuItem(std::vector<std::shared_ptr<MenuItem>>&& children)
 	: SubmenuMenuItem("top", children)
 {}
 

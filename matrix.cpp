@@ -246,7 +246,7 @@ mat4 MakeTranslation(float tx, float ty, float tz)
 		tx, ty, tz, 1};
 }
 
-mat4 MakeTranslation(const vec3 t)
+mat4 MakeTranslation(const vec3& t)
 {
 	return { 
 		1, 0, 0, 0,
@@ -255,6 +255,7 @@ mat4 MakeTranslation(const vec3 t)
 		t.x, t.y, t.z, 1};
 }
 
+mat4 MakeScale(const vec3& v) { return MakeScale(v.x, v.y, v.z); }
 mat4 MakeScale(float sx, float sy, float sz)
 {
 	return {

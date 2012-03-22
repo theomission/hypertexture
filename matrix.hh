@@ -125,7 +125,8 @@ mat4 RotateAround(const vec3& axis, float rads);
 mat4 AffineInverse(const mat4& m);
 mat4 Transpose(const mat4& m);
 mat4 MakeTranslation(float tx, float ty, float tz);
-mat4 MakeTranslation(const vec3 t);
+mat4 MakeTranslation(const vec3& t);
+mat4 MakeScale(const vec3& v) ;
 mat4 MakeScale(float sx, float sy, float sz);
 mat4 MatFromFrame(const vec3& xaxis, const vec3& yaxis, const vec3& zaxis, const vec3& trans);
 

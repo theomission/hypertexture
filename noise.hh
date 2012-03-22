@@ -9,7 +9,10 @@ public:
 	Noise();
 	Noise(unsigned int seed);
 
+	float Sample(const vec3& v) const { return Sample(v.x, v.y, v.z); }
 	float Sample(float x, float y, float z) const;
+
+	float FbmSample(const vec3& v, float h, float lacunarity, float octaves);
 private:
 	void Init();
 	float Grad(int perm, float x, float y, float z) const;

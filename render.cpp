@@ -317,6 +317,10 @@ void ShaderInfo::FindCommonShaderLocs()
 	uniforms[BIND_Mvp] = glGetUniformLocation(p, "mvp");
 	uniforms[BIND_Model] = glGetUniformLocation(p, "model");
 	uniforms[BIND_ModelIT] = glGetUniformLocation(p, "modelIT");
+	uniforms[BIND_ModelInv] = glGetUniformLocation(p, "modelInv");
+	uniforms[BIND_ModelView] = glGetUniformLocation(p, "modelView");
+	uniforms[BIND_ModelViewIT] = glGetUniformLocation(p, "modelViewIT");
+	uniforms[BIND_ModelViewInv] = glGetUniformLocation(p, "modelViewInv");
 	uniforms[BIND_Sundir] = glGetUniformLocation(p, "sundir");
 	uniforms[BIND_Color] = glGetUniformLocation(p, "color");
 	uniforms[BIND_Eyepos] = glGetUniformLocation(p, "eyePos");

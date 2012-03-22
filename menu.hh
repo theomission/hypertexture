@@ -83,6 +83,7 @@ class SubmenuMenuItem : public MenuItem
 public:
 	SubmenuMenuItem(const std::string& name);
 	SubmenuMenuItem(const std::string& name, const std::vector<std::shared_ptr<MenuItem>>& children);
+	SubmenuMenuItem(const std::string& name, std::vector<std::shared_ptr<MenuItem>>&& children);
 
 	void Render() ;
 	bool OnKey(int key, int mod) ;
@@ -107,6 +108,7 @@ class TopMenuItem : public SubmenuMenuItem
 public:
 	TopMenuItem();
 	TopMenuItem(const std::vector<std::shared_ptr<MenuItem>>& children);
+	TopMenuItem(std::vector<std::shared_ptr<MenuItem>>&& children);
 
 	bool OnKey(int key, int mod) ;
 	void Render() ;

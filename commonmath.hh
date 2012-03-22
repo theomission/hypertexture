@@ -99,6 +99,13 @@ inline float spline_c2(float t)
 	return 6.f * t5 - 15.f * t4 + 10 * t3;
 }
 
+inline float SmoothStep(float stepStart, float stepEnd, float val)
+{
+	float t = (val - stepStart) / (stepEnd - stepStart);
+	t = Clamp(t,0.f,1.f);
+	return spline_c2(t);
+}
+
 float AngleWrap(float angle);
 
 inline float Floor(float val) {
