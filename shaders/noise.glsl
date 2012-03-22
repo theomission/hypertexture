@@ -116,3 +116,23 @@ float pnoise(vec3 p)
 	return 2.2 * xlerp;
 }
 
+float fbmNoise(vec3 pt, float h, float lacunarity, float octaves)
+{
+	int numOctaves = int(octaves);
+	float result = 0.0;
+
+	for(int i = 0; i < numOctaves; ++i)
+	{
+		result += pnoise(pt) * pow(lacunarity, -h * i);
+		pt *= lacunarity;
+	}
+
+	float remainder = octaves - numOctaves;
+	if(remainder > 0.0)
+	{
+		result += remainder * pnoise(pt) * pow(lacunarity, -h * numOctaves);
+	}
+
+	return result;
+}
+

@@ -49,6 +49,7 @@ static int g_frameSampleCount;
 static unsigned long long g_frameSampleTime;
 static unsigned long long g_lastTime = 0;
 
+static std::shared_ptr<GpuHypertexture> g_gpuhtex;
 static std::shared_ptr<Hypertexture> g_htex;
 
 static Color g_sunColor;
@@ -164,7 +165,7 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void drawDebugTexture(void)
+static void drawDebugTexture(void)
 {
 	if(g_debugTexture)
 	{	
@@ -239,7 +240,7 @@ void drawDebugTexture(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void draw(Framedata& frame)
+static void draw(Framedata& frame)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDisable(GL_SCISSOR_TEST);
@@ -258,8 +259,9 @@ void draw(Framedata& frame)
 	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
 
-	g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
-	
+	if(g_htex) g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
+	if(g_gpuhtex) g_gpuhtex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
+
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
 
@@ -292,48 +294,53 @@ void draw(Framedata& frame)
 	checkGlError("swap");
 }
 
-void InitializeShaders()
+static void InitializeShaders()
 {
 	g_debugTexShader = render_CompileShader("shaders/debugtex2d.glsl", g_debugTexUniformNames);
 	checkGlError("InitializeShaders");
 }
 
-void createHyperTexture()
+//void createHyperTexture()
+//{
+//	std::shared_ptr<Noise> noise = std::make_shared<Noise>();
+//
+//	const float radius = 0.50f;
+//	const float innerRadius = 0.3f;
+//	const float invdiff = 1.f/(radius - innerRadius);
+//	const vec3 center(0.5);
+//	g_htex = std::make_shared<Hypertexture>(256,
+//	[=](float x, float y, float z)
+//	{
+//		vec3 pt(x,y,z);
+//
+//		//float alongLine = Dot(pt - lineStart, lineDir);
+//		//vec3 closestPt = lineStart + lineDir * alongLine;
+//		//closestPt.x += 0.1 * sinf(alongLine * 7.f); 
+//		//closestPt.y += 0.1 * cosf(alongLine * 9.f); 
+//	
+//		// turbulence
+//		vec3 diff = pt - center;
+//		float len = Length(diff) ;
+//		float n = 0.2 * (noise->FbmSample(pt, 0.7f, 2.f, 10));
+//		len += n;
+//
+//		float outerDensity = 1.f - SmoothStep(radius - 0.01f, radius + 0.01f, len);
+//		float innerDensity = SmoothStep(innerRadius - 0.01f, innerRadius + 0.01f, len);
+//
+//		float t = (len - innerRadius) * invdiff;
+//		t = Clamp(t, 0.f, 1.f);
+//		float density = Lerp(t, innerDensity, outerDensity);
+//
+//		return density;
+//	});
+//}
+
+static void createGpuHypertexture()
 {
-	std::shared_ptr<Noise> noise = std::make_shared<Noise>();
-
-	const float radius = 0.50f;
-	const float innerRadius = 0.3f;
-	const float invdiff = 1.f/(radius - innerRadius);
-	const vec3 center(0.5);
-	g_htex = std::make_shared<Hypertexture>(256,
-	[=](float x, float y, float z)
-	{
-		vec3 pt(x,y,z);
-
-		//float alongLine = Dot(pt - lineStart, lineDir);
-		//vec3 closestPt = lineStart + lineDir * alongLine;
-		//closestPt.x += 0.1 * sinf(alongLine * 7.f); 
-		//closestPt.y += 0.1 * cosf(alongLine * 9.f); 
-	
-		// turbulence
-		vec3 diff = pt - center;
-		float len = Length(diff) ;
-		float n = 0.2 * (noise->FbmSample(pt, 0.7f, 2.f, 10));
-		len += n;
-
-		float outerDensity = 1.f - SmoothStep(radius - 0.01f, radius + 0.01f, len);
-		float innerDensity = SmoothStep(innerRadius - 0.01f, innerRadius + 0.01f, len);
-
-		float t = (len - innerRadius) * invdiff;
-		t = Clamp(t, 0.f, 1.f);
-		float density = Lerp(t, innerDensity, outerDensity);
-
-		return density;
-	});
+	g_gpuhtex = std::make_shared<GpuHypertexture>(256, render_CompileShader("shaders/gen/spherenoise.glsl"));
 }
 
-void initialize()
+static void initialize()
 {
 	task_Startup(3);
 	dbgdraw_Init();
@@ -353,10 +360,10 @@ void initialize()
 
 	tweaker_LoadVars(".settings", g_settingsVars);
 	
-	createHyperTexture();
+	createGpuHypertexture();
 }
 
-void update(Framedata& frame)
+static void update(Framedata& frame)
 {
 	struct timespec current_time;
 	clock_gettime(CLOCK_MONOTONIC, &current_time);
@@ -402,7 +409,7 @@ enum CameraDirType {
 	CAMDIR_RIGHT
 };
 
-void move_camera(int dir)
+static void move_camera(int dir)
 {	
 	int mods = SDL_GetModState();
 	float kScale = 50.0;
@@ -420,7 +427,7 @@ void move_camera(int dir)
 	g_curCamera->MoveBy(off);
 }
 
-void resize(int w, int h)
+static void resize(int w, int h)
 {
 	g_screen.Resize(w,h);
 	g_mainCamera->SetAspect(g_screen.m_aspect);

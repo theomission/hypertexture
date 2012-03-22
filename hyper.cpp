@@ -6,6 +6,7 @@
 #include "vec.hh"
 #include "camera.hh"
 #include "commonmath.hh"
+#include "gputask.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_htexShader;
@@ -154,6 +155,98 @@ void Hypertexture::Render(const Camera& camera, const vec3& scale, const vec3& s
 	glDisable(GL_CULL_FACE);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
+	: m_numCells(numCells)
+	, m_shader(shader)
+	, m_ready(false)
+	, m_fbo(numCells, numCells, numCells)
+	, m_completedSlices(0)
+{
+	m_fbo.AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
+	m_fbo.Create();
+	Kick();
+}
+
+GpuHypertexture::~GpuHypertexture()
+{
+}
+	
+void GpuHypertexture::KickSlice(int slice)
+{
+	auto submit = [this, slice]() {
+		const int numCells = m_numCells;
+		const float zCoord = (slice/(float)(numCells-1))*2.f - 1.0f;
+
+		m_fbo.Bind();
+		m_fbo.BindLayer(slice);
+		ViewportState vpState(0, 0, numCells, numCells);
+
+		const ShaderInfo* shader = m_shader.get();
+		glUseProgram(shader->m_program);
+
+		GLint posLoc = m_shader->m_attrs[GEOM_Pos];
+
+		glEnable(GL_CULL_FACE);
+		glBegin(GL_TRIANGLE_STRIP);
+		glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
+		glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
+		glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
+		glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
+		glEnd();
+		checkGlError("GpuHypertexture::KickSlice - submit");
+		glDisable(GL_CULL_FACE);
+		
+		++m_completedSlices;
+		if(m_completedSlices == numCells)
+			m_ready = true;
+	};
+
+	gputask_Append(std::make_shared<GpuTask>(submit, nullptr));
+}
+
+void GpuHypertexture::Kick()
+{
+	m_ready = false;
+	m_completedSlices = 0;
+	const int numCells = m_numCells;
+	for(int z = 0; z < numCells; ++z)
+		KickSlice(z);
+}
+
+void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3& sundir, const Color& sunColor)
+{
+	if(!m_ready) return;
+	const ShaderInfo* shader = g_htexShader.get();
+
+	mat4 model = MakeScale(scale) * MakeTranslation(-0.5f, -0.5f, -0.5f);
+	mat4 modelInv = AffineInverse(model);
+	mat4 mvp = camera.GetProj() * (camera.GetView() * model);
+
+	vec3 eyePos = TransformPoint(modelInv, camera.GetPos());
+
+	GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
+	GLint densityMapLoc = shader->m_custom[HTEXBIND_DensityMap];
+	GLint eyePosInModelLoc = shader->m_custom[HTEXBIND_EyePosInModel];
+	GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
+	GLint sunColorLoc = shader->m_uniforms[BIND_SunColor];
+
+	glUseProgram(shader->m_program);
+	glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_3D, m_fbo.GetTexture(0));
+	glUniform1i(densityMapLoc, 0);
+	glUniform3fv(eyePosInModelLoc, 1, &eyePos.x);
+	glUniform3fv(sundirLoc, 1, &sundir.x);
+	glUniform3fv(sunColorLoc, 1, &sunColor.r);
+
+	glEnable(GL_CULL_FACE);
+	g_boxGeom->Render(*shader);
+	glDisable(GL_CULL_FACE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<Geom> CreateHypertextureBoxGeom()
 {
 	static float verts[] = {

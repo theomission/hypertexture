@@ -46,6 +46,7 @@ enum CommonBindingsType {
 
 class ShaderInfo;
 
+////////////////////////////////////////////////////////////////////////////////
 class GeomBindPair 
 {
 public:
@@ -55,6 +56,7 @@ public:
 	int m_offset;
 } ;
 
+////////////////////////////////////////////////////////////////////////////////
 class Geom 
 {
 public:
@@ -84,6 +86,7 @@ std::shared_ptr<Geom> render_GenerateBoxGeom();
 
 void checkGlError(const char* str);
 
+////////////////////////////////////////////////////////////////////////////////
 class CustomShaderAttr
 {
 public:
@@ -95,6 +98,7 @@ public:
 	bool m_optional;
 };
 
+////////////////////////////////////////////////////////////////////////////////
 class ShaderInfo
 {
 public:
@@ -132,10 +136,45 @@ void render_RefreshShaders();
 void render_SetTextureParameters(int sWrap = GL_REPEAT, int tWrap = GL_REPEAT,
 	int magFilter = GL_LINEAR, int minFilter = GL_LINEAR_MIPMAP_LINEAR);
 
+////////////////////////////////////////////////////////////////////////////////
+class ShaderParams
+{
+public:
+	ShaderParams(const std::shared_ptr<ShaderInfo>& shader);
+
+	enum ParamType {
+		P_Float1,
+		P_Float2,
+		P_Float3,
+		P_Float4,
+		P_Int1,
+		P_Int2,
+		P_Int3,
+		P_Int4,
+		P_Matrix4,
+	};
+
+	void AddParam(const char* name, int type, const void* data);
+	void Submit();
+private:
+	struct Param {
+		Param(const char* name, int idx, int type, const void* data) 
+			: m_name(name), m_customIndex(idx), m_type(type), m_data(data) {}
+		const char* m_name;
+		int m_customIndex;
+		int m_type;
+		const void *m_data;
+	};
+
+	std::shared_ptr<ShaderInfo> m_shader;
+	std::vector<Param> m_params;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 class Framebuffer
 {
 public:
-	Framebuffer(int width, int height);
+	Framebuffer(int width, int height, int layers = 0);
 	~Framebuffer();
 
 	Framebuffer(const Framebuffer&) = delete;
@@ -143,21 +182,30 @@ public:
 
 	void AddDepth(bool stencil = false);
 	void AddTexture(int internalFormat, int format, int dataType);
-	GLuint GetTexture(int index) const { return m_tbo[index]; }
+	void AddTexture3D(int internalFormat, int format, int dataType);
+	GLuint GetTexture(int index) const { return m_tbo[index].tex; }
 	void Create();
 
 	void Bind() const;
+	void BindLayer(int layer) const;
 
 	void CopyTexture(int index, GLuint destTex, int internalFormat) const;
 private:
+	struct TexInfo {
+		TexInfo(int type_, GLuint tex_) : type(type_), tex(tex_) {}
+		int type;
+		GLuint tex;
+	};
 	GLuint m_fbo;
 	GLuint m_rboDepth;
 	bool m_hasStencil;
 	int m_width;
 	int m_height;
-	std::vector<GLuint> m_tbo;
+	int m_layers;
+	std::vector<TexInfo> m_tbo;
 };
 
+////////////////////////////////////////////////////////////////////////////////
 class ViewportState
 {
 public:
@@ -167,6 +215,7 @@ private:
 	int m_oldViewport[4];
 };
 
+////////////////////////////////////////////////////////////////////////////////
 class ScissorState
 {
 public:

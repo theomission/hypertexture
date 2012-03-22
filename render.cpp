@@ -17,7 +17,8 @@
 // File globals
 static const char kVersion130[] = "#version 150\n";
 static std::vector<std::shared_ptr<ShaderInfo>> g_shaders;
-	
+
+////////////////////////////////////////////////////////////////////////////////
 Geom::Geom(int numVerts, const float* verts, 
 		int numIndices, const unsigned short* indices,
 		int vertStride, int glPrimType, 
@@ -75,6 +76,7 @@ void Geom::Unbind(const ShaderInfo& shader)
 			glDisableVertexAttribArray(shader.m_attrs[pair.m_attr]);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<Geom> render_GenerateBoxGeom()
 {
 	static float verts[] = {
@@ -117,6 +119,7 @@ std::shared_ptr<Geom> render_GenerateBoxGeom()
 	);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 std::shared_ptr<Geom> render_GenerateSphereGeom(int subdivH, int subdivV)
 {
 	const int kN = Max(subdivV, 2), kM = Max(subdivH, 4);
@@ -523,6 +526,70 @@ void ShaderInfo::Recompile()
 	}
 }
 
+////////////////////////////////////////////////////////////////////////////////
+ShaderParams::ShaderParams(const std::shared_ptr<ShaderInfo>& shader)
+	: m_shader(shader)
+{
+}
+
+void ShaderParams::AddParam(const char* name, int type, const void* data)
+{
+	int idx = -1;
+	for(int i = 0, c = m_shader->m_custom.size(); i < c; ++i)
+	{
+		if(strcmp(name, m_shader->m_customSpec[i].m_name) == 0) {
+			idx = i;
+			break;
+		}
+	}
+	m_params.emplace_back(name, idx, type, data);
+}
+
+void ShaderParams::Submit()
+{
+	const ShaderInfo* shader = m_shader.get();
+	for(const auto& param: m_params)
+	{
+		if(param.m_customIndex < 0) continue;
+		int id = shader->m_customSpec[param.m_customIndex].m_id;
+		GLint loc = shader->m_custom[id];
+		if(loc < 0) continue;
+
+		switch(param.m_type)
+		{
+		case P_Float1:
+			glUniform1fv(loc, 1, static_cast<const GLfloat*>(param.m_data));
+			break;
+		case P_Float2:
+			glUniform2fv(loc, 1, static_cast<const GLfloat*>(param.m_data));
+			break;
+		case P_Float3:
+			glUniform3fv(loc, 1, static_cast<const GLfloat*>(param.m_data));
+			break;
+		case P_Float4:
+			glUniform4fv(loc, 1, static_cast<const GLfloat*>(param.m_data));
+			break;
+		case P_Int1:
+			glUniform1iv(loc, 1, static_cast<const GLint*>(param.m_data));
+			break;
+		case P_Int2:
+			glUniform2iv(loc, 1, static_cast<const GLint*>(param.m_data));
+			break;
+		case P_Int3:
+			glUniform3iv(loc, 1, static_cast<const GLint*>(param.m_data));
+			break;
+		case P_Int4:
+			glUniform4iv(loc, 1, static_cast<const GLint*>(param.m_data));
+			break;
+		case P_Matrix4:
+			glUniformMatrix4fv(loc, 1, 0, static_cast<const GLfloat*>(param.m_data));
+			break;
+		default: ASSERT(false); break;
+		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void render_SetTextureParameters(int sWrap, int tWrap, int magFilter, int minFilter)
 {
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
@@ -533,20 +600,21 @@ void render_SetTextureParameters(int sWrap, int tWrap, int magFilter, int minFil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-Framebuffer::Framebuffer(int width, int height)
+Framebuffer::Framebuffer(int width, int height, int layers)
 	: m_fbo(0)
 	, m_rboDepth(0)
 	, m_hasStencil(false)
 	, m_width(width)
 	, m_height(height)
+	, m_layers(layers)
 	, m_tbo()
 {
 }
 
 Framebuffer::~Framebuffer()
 {
-	for(GLuint tex: m_tbo)
-		glDeleteTextures(1, &tex);
+	for(TexInfo& info: m_tbo)
+		glDeleteTextures(1, &info.tex);
 	if(m_rboDepth)
 		glDeleteRenderbuffers(1, &m_rboDepth);
 	glDeleteFramebuffers(1, &m_fbo);
@@ -568,11 +636,27 @@ void Framebuffer::AddTexture(int internalFormat, int format, int dataType)
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
 	render_SetTextureParameters(GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_LINEAR, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
 	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, m_width, m_height, 0, format, dataType, 0);
-	m_tbo.push_back(tex);
+	m_tbo.emplace_back(GL_TEXTURE_2D, tex);
 	checkGlError("Framebuffer::AddTexture");
 	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void Framebuffer::AddTexture3D(int internalFormat, int format, int dataType)
+{
+	GLuint tex;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_3D, tex);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+	glTexImage3D(GL_TEXTURE_3D, 0, internalFormat, m_width, m_height, m_layers, 0, format,
+		dataType, 0);
+	m_tbo.emplace_back(GL_TEXTURE_3D, tex);
+	checkGlError("FrameBuffer::AddTexture3D");
+	glBindTexture(GL_TEXTURE_3D, 0);
 }
 
 void Framebuffer::Create()
@@ -582,7 +666,13 @@ void Framebuffer::Create()
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, m_hasStencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT,
 		GL_RENDERBUFFER, m_rboDepth);
 	for(int i = 0, c = m_tbo.size(); i < c; ++i)
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, m_tbo[i], 0);
+	{
+		if(m_tbo[i].type == GL_TEXTURE_2D) {
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, m_tbo[i].tex, 0);
+		} else if(m_tbo[i].type == GL_TEXTURE_3D) {
+			glFramebufferTexture3D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_3D, m_tbo[i].tex, 0, 0);
+		}
+	}
 	GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if(status != GL_FRAMEBUFFER_COMPLETE)
 	{
@@ -594,9 +684,28 @@ void Framebuffer::Bind() const
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
 }
+	
+void Framebuffer::BindLayer(int layer) const
+{
+	for(int i = 0, c = m_tbo.size(); i < c; ++i)
+	{
+		if(m_tbo[i].type == GL_TEXTURE_3D) {
+			glFramebufferTexture3D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_3D, m_tbo[i].tex, 0, layer);
+		}
+	}
+	GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if(status != GL_FRAMEBUFFER_COMPLETE)
+	{
+		std::cerr << "Error: incomplete framebuffer" << std::endl;
+	}
+}
 
 void Framebuffer::CopyTexture(int index, GLuint destTex, int internalFormat) const
 {
+	if(m_tbo[index].type == GL_TEXTURE_3D) {
+		std::cerr << "Can't copy a 3D texture using Framebuffer::CopyTexture." << std::endl;
+		return;
+	}
 	glReadBuffer(GL_COLOR_ATTACHMENT0 + index);
 	glCopyTexImage2D(destTex, 0, internalFormat, 0, 0, m_width, m_height, 0);
 	glReadBuffer(GL_BACK);
