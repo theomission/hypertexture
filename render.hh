@@ -175,6 +175,7 @@ class Framebuffer
 {
 public:
 	Framebuffer(int width, int height, int layers = 0);
+	Framebuffer(Framebuffer&& other);
 	~Framebuffer();
 
 	Framebuffer(const Framebuffer&) = delete;

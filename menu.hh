@@ -81,6 +81,7 @@ private:
 class SubmenuMenuItem : public MenuItem
 {
 public:
+	typedef std::vector<std::shared_ptr<MenuItem>> ChildListType;
 	SubmenuMenuItem(const std::string& name);
 	SubmenuMenuItem(const std::string& name, const std::vector<std::shared_ptr<MenuItem>>& children);
 	SubmenuMenuItem(const std::string& name, std::vector<std::shared_ptr<MenuItem>>&& children);

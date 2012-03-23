@@ -31,6 +31,18 @@ Screen g_screen(1024, 768);
 std::shared_ptr<Camera> g_curCamera;
 
 ////////////////////////////////////////////////////////////////////////////////
+// Types
+class AnimatedHypertexture
+{
+public:
+	AnimatedHypertexture(int numCells, const char* shaderFile);
+	std::shared_ptr<GpuHypertexture> m_gpuhtex;
+	std::shared_ptr<ShaderParams> m_params;
+	float m_time;
+	float m_lastUpdateTime;
+};
+
+////////////////////////////////////////////////////////////////////////////////
 // file scope globals
 static float g_dt;
 static vec3 g_focus, g_defaultFocus, g_defaultEye, g_defaultUp;
@@ -49,11 +61,15 @@ static int g_frameSampleCount;
 static unsigned long long g_frameSampleTime;
 static unsigned long long g_lastTime = 0;
 
-static std::shared_ptr<GpuHypertexture> g_gpuhtex;
+static std::shared_ptr<AnimatedHypertexture> g_curHtex;;
 static std::shared_ptr<Hypertexture> g_htex;
+static std::shared_ptr<SubmenuMenuItem> g_shapesMenu;
 
 static Color g_sunColor;
 static vec3 g_sundir;
+
+static GLuint g_debugTexture;
+static int g_debugTextureSplit;
 
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
@@ -73,9 +89,13 @@ static std::vector<CustomShaderAttr> g_debugTexUniformNames =
 	{ DTEXLOC_Dims, "dims"},
 };
 
-////////////////////////////////////////////////////////////////////////////////
-static GLuint g_debugTexture;
-static int g_debugTextureSplit;
+enum AnimatedHtexBindType {
+	HTEXBIND_Time,
+};
+static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
+{
+	{ HTEXBIND_Time, "time" },
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // tweak vars
@@ -152,10 +172,11 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 			[](){ return dbgdraw_IsDepthTestEnabled(); },
 			[](bool enabled) { dbgdraw_SetDepthTestEnabled(int(enabled)); }),
 	};
-
+	g_shapesMenu = std::make_shared<SubmenuMenuItem>("shapes");
 	std::vector<std::shared_ptr<MenuItem>> tweakMenu = {
 		std::make_shared<SubmenuMenuItem>("cam", std::move(cameraMenu)),
 		std::make_shared<SubmenuMenuItem>("lighting", std::move(lightingMenu)),
+		g_shapesMenu,
 		std::make_shared<SubmenuMenuItem>("debug", std::move(debugMenu)),
 	};
 	std::vector<std::shared_ptr<MenuItem>> topMenu = {
@@ -260,7 +281,8 @@ static void draw(Framedata& frame)
 	glEnable(GL_DEPTH_TEST);
 
 	if(g_htex) g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
-	if(g_gpuhtex) g_gpuhtex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
+	if(g_curHtex) 
+		g_curHtex->m_gpuhtex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
@@ -289,9 +311,10 @@ static void draw(Framedata& frame)
 
 	task_RenderProgress();
 	checkGlError("end draw");
-
+	
 	SDL_GL_SwapBuffers();
 	checkGlError("swap");
+	
 }
 
 static void InitializeShaders()
@@ -335,9 +358,51 @@ static void InitializeShaders()
 //	});
 //}
 
-static void createGpuHypertexture()
+AnimatedHypertexture::AnimatedHypertexture(int numCells, const char* shaderFile)
+	: m_time(0.f)
+	, m_lastUpdateTime(0.f)
 {
-	g_gpuhtex = std::make_shared<GpuHypertexture>(256, render_CompileShader("shaders/gen/spherenoise.glsl"));
+	auto shader = render_CompileShader(shaderFile, g_animatedHtexUniforms);
+	m_params = std::make_shared<ShaderParams>(shader);
+	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
+	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, m_params);
+}
+
+static std::shared_ptr<SubmenuMenuItem> 
+	createDefaultHypertextureMenu(const char* name, const std::shared_ptr<AnimatedHypertexture>& htex)
+{
+	auto menu = std::make_shared<SubmenuMenuItem>("sphere noise", 
+		SubmenuMenuItem::ChildListType{
+			std::make_shared<ButtonMenuItem>("activate", 
+				[=, &g_curHtex](){ g_curHtex = htex; }),
+			std::make_shared<ButtonMenuItem>("reset time", 
+				[=](){ 
+					htex->m_time = 0.f; 
+					htex->m_lastUpdateTime = 0.f; 
+				}),
+			std::make_shared<FloatSliderMenuItem>("time slider",
+				[=]() { return htex->m_time;  },
+				[=, &g_curHtex](float time) { 
+					htex->m_time = time; 
+					if(g_curHtex == htex) 
+						htex->m_gpuhtex->Update(); 
+				}),
+		}
+	);
+	return menu;
+}
+
+static void createGpuHypertextures()
+{
+	// Sphere noise 
+	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", [&g_curHtex]() {
+		if(g_curHtex) g_curHtex->m_gpuhtex->Update(); }));
+	auto htex = std::make_shared<AnimatedHypertexture>(128, "shaders/gen/spherenoise.glsl");
+	auto menu = createDefaultHypertextureMenu("sphere noise", htex);
+	htex->m_time = 10.f;
+	g_shapesMenu->AppendChild(menu);
+
+	g_curHtex = htex;
 }
 
 static void initialize()
@@ -360,7 +425,7 @@ static void initialize()
 
 	tweaker_LoadVars(".settings", g_settingsVars);
 	
-	createGpuHypertexture();
+	createGpuHypertextures();
 }
 
 static void update(Framedata& frame)
@@ -375,9 +440,11 @@ static void update(Framedata& frame)
 	{
 		g_lastTime = timeUsec;
 		float dt = diffTime / 1e6f;
-		g_dt = dt;
+		g_dt = Min(dt, 0.1f);
 
 		// move stuff with dt
+//		if(g_curHtex)
+//			g_curHtex->m_time += g_dt;
 	}
 	else g_dt = 0.f;
 
@@ -397,6 +464,18 @@ static void update(Framedata& frame)
 	menu_Update(g_dt);		
 
 	gputask_Join();
+
+//	if(g_curHtex)
+//	{
+//		if(g_curHtex->m_time - g_curHtex->m_lastUpdateTime > 1.f) 
+//		{
+//			std::cout << "Tick... " << g_curHtex->m_time << " " << g_curHtex->m_lastUpdateTime << std::endl;
+//			g_curHtex->m_lastUpdateTime = g_curHtex->m_time;
+//			g_curHtex->m_gpuhtex->Update();
+//		}
+//	}
+//
+
 	gputask_Kick();
 
 	task_Update();

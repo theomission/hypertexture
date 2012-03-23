@@ -611,13 +611,32 @@ Framebuffer::Framebuffer(int width, int height, int layers)
 {
 }
 
+Framebuffer::Framebuffer(Framebuffer&& other)
+	: m_fbo(0)
+	, m_rboDepth(0)
+	, m_hasStencil(false)
+	, m_width(0)
+	, m_height(0)
+	, m_layers(0)
+	, m_tbo()
+{
+	std::swap(m_fbo, other.m_fbo);
+	std::swap(m_rboDepth, other.m_rboDepth);
+	std::swap(m_hasStencil, other.m_hasStencil);
+	std::swap(m_width, other.m_width);
+	std::swap(m_height, other.m_height);
+	std::swap(m_layers, other.m_layers);
+	m_tbo.swap(other.m_tbo);
+}
+
 Framebuffer::~Framebuffer()
 {
 	for(TexInfo& info: m_tbo)
 		glDeleteTextures(1, &info.tex);
 	if(m_rboDepth)
 		glDeleteRenderbuffers(1, &m_rboDepth);
-	glDeleteFramebuffers(1, &m_fbo);
+	if(m_fbo)
+		glDeleteFramebuffers(1, &m_fbo);
 }
 
 void Framebuffer::AddDepth(bool stencil)

@@ -156,67 +156,75 @@ void Hypertexture::Render(const Camera& camera, const vec3& scale, const vec3& s
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
+GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader,
+	const std::shared_ptr<ShaderParams>& params)
 	: m_numCells(numCells)
 	, m_shader(shader)
-	, m_ready(false)
-	, m_fbo(numCells, numCells, numCells)
+	, m_genParams(params)
+	, m_ready(true)
+	, m_fbo{{numCells, numCells, numCells}, {numCells, numCells, numCells}}
+	, m_curFbo(0)
 	, m_completedSlices(0)
 {
-	m_fbo.AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
-	m_fbo.Create();
-	Kick();
+	m_fbo[0].AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
+	m_fbo[0].Create();
+	m_fbo[1].AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
+	m_fbo[1].Create();
+	Update();
 }
 
 GpuHypertexture::~GpuHypertexture()
 {
 }
 	
-void GpuHypertexture::KickSlice(int slice)
+void GpuHypertexture::Update()
 {
-	auto submit = [this, slice]() {
+	if(!m_ready) return;
+	m_ready = false;
+	m_completedSlices = 0;
+
+	auto submit = [this]() {
 		const int numCells = m_numCells;
-		const float zCoord = (slice/(float)(numCells-1))*2.f - 1.0f;
 
-		m_fbo.Bind();
-		m_fbo.BindLayer(slice);
-		ViewportState vpState(0, 0, numCells, numCells);
-
-		const ShaderInfo* shader = m_shader.get();
-		glUseProgram(shader->m_program);
-
-		GLint posLoc = m_shader->m_attrs[GEOM_Pos];
-
+		const Framebuffer& fbo = m_fbo[m_curFbo];
+		fbo.Bind();
+	
+		float zCoord = -1.f;
+		const float zInc = 2.f / numCells;
 		glEnable(GL_CULL_FACE);
-		glBegin(GL_TRIANGLE_STRIP);
-		glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
-		glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
-		glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
-		glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
-		glEnd();
-		checkGlError("GpuHypertexture::KickSlice - submit");
+		for(int z = 0; z < numCells; ++z, zCoord += zInc)
+		{
+			fbo.BindLayer(z);
+			ViewportState vpState(0, 0, numCells, numCells);
+
+			const ShaderInfo* shader = m_shader.get();
+			glUseProgram(shader->m_program);
+
+			if(m_genParams) m_genParams->Submit();
+
+			GLint posLoc = m_shader->m_attrs[GEOM_Pos];
+
+			glBegin(GL_TRIANGLE_STRIP);
+			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
+			glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
+			glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
+			glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
+			glEnd();
+			checkGlError("GpuHypertexture::KickSlice - submit");
+
+			++m_completedSlices;
+		}
 		glDisable(GL_CULL_FACE);
-		
-		++m_completedSlices;
-		if(m_completedSlices == numCells)
-			m_ready = true;
+
+		m_curFbo = m_curFbo ^ 1;
+		m_ready = true;
 	};
 
 	gputask_Append(std::make_shared<GpuTask>(submit, nullptr));
 }
 
-void GpuHypertexture::Kick()
-{
-	m_ready = false;
-	m_completedSlices = 0;
-	const int numCells = m_numCells;
-	for(int z = 0; z < numCells; ++z)
-		KickSlice(z);
-}
-
 void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3& sundir, const Color& sunColor)
 {
-	if(!m_ready) return;
 	const ShaderInfo* shader = g_htexShader.get();
 
 	mat4 model = MakeScale(scale) * MakeTranslation(-0.5f, -0.5f, -0.5f);
@@ -235,7 +243,7 @@ void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3
 	glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_3D, m_fbo.GetTexture(0));
+	glBindTexture(GL_TEXTURE_3D, m_fbo[m_curFbo ^ 1].GetTexture(0));
 	glUniform1i(densityMapLoc, 0);
 	glUniform3fv(eyePosInModelLoc, 1, &eyePos.x);
 	glUniform3fv(sundirLoc, 1, &sundir.x);

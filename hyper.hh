@@ -34,17 +34,20 @@ private:
 class GpuHypertexture
 {
 public:
-	GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader) ; // + shader parameters with menu hookups
+	GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader, 
+		const std::shared_ptr<ShaderParams>& params = nullptr);
 	~GpuHypertexture();
 	void Render(const Camera& camera, const vec3& scale, const vec3& sundir, const Color& sunColor);
+
+	void Update();
 private:
-	void Kick();
-	void KickSlice(int slice);
 
 	int m_numCells;
 	std::shared_ptr<ShaderInfo> m_shader;
+	std::shared_ptr<ShaderParams> m_genParams;
 	bool m_ready;
-	Framebuffer m_fbo;
+	Framebuffer m_fbo[2];
+	int m_curFbo;
 	int m_completedSlices;
 };
 

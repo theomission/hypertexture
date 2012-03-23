@@ -1,12 +1,13 @@
+uniform float time;
 
 #include "shaders/noise.glsl"
 
 float density(vec3 pt)
 {
 	const vec3 center = vec3(0.5);
-	const float radius = 0.5;
-	const float innerRadius = 0.3;
-	const float invdiff = 1.0 / ( radius - innerRadius );
+	float radius = 0.5 * (time/10.0);
+	float innerRadius = 0.3 * (time/12.0);
+	float invdiff = 1.0 / ( radius - innerRadius );
 
 	vec3 diff = pt - center;
 	float len = length(diff);
