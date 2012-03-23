@@ -36,7 +36,9 @@ class AnimatedHypertexture
 {
 public:
 	AnimatedHypertexture(int numCells, const char* shaderFile);
+	AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo> &shader);
 	std::shared_ptr<GpuHypertexture> m_gpuhtex;
+	std::shared_ptr<ShaderInfo> m_shader;
 	std::shared_ptr<ShaderParams> m_params;
 	float m_time;
 	float m_lastUpdateTime;
@@ -362,7 +364,17 @@ AnimatedHypertexture::AnimatedHypertexture(int numCells, const char* shaderFile)
 	: m_time(0.f)
 	, m_lastUpdateTime(0.f)
 {
-	auto shader = render_CompileShader(shaderFile, g_animatedHtexUniforms);
+	m_shader = render_CompileShader(shaderFile, g_animatedHtexUniforms);
+	m_params = std::make_shared<ShaderParams>(m_shader);
+	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
+	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, m_shader, m_params);
+}
+
+AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
+	: m_time(0.f)
+	, m_lastUpdateTime(0.f)
+{
+	m_shader = shader;
 	m_params = std::make_shared<ShaderParams>(shader);
 	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
 	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, m_params);
@@ -371,7 +383,7 @@ AnimatedHypertexture::AnimatedHypertexture(int numCells, const char* shaderFile)
 static std::shared_ptr<SubmenuMenuItem> 
 	createDefaultHypertextureMenu(const char* name, const std::shared_ptr<AnimatedHypertexture>& htex)
 {
-	auto menu = std::make_shared<SubmenuMenuItem>("sphere noise", 
+	auto menu = std::make_shared<SubmenuMenuItem>(name, 
 		SubmenuMenuItem::ChildListType{
 			std::make_shared<ButtonMenuItem>("activate", 
 				[=, &g_curHtex](){ g_curHtex = htex; }),
@@ -397,12 +409,23 @@ static void createGpuHypertextures()
 	// Sphere noise 
 	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", [&g_curHtex]() {
 		if(g_curHtex) g_curHtex->m_gpuhtex->Update(); }));
-	auto htex = std::make_shared<AnimatedHypertexture>(128, "shaders/gen/spherenoise.glsl");
-	auto menu = createDefaultHypertextureMenu("sphere noise", htex);
+
+	auto htex = std::make_shared<AnimatedHypertexture>(64, "shaders/gen/spherenoise.glsl");
+	auto menu = createDefaultHypertextureMenu("sphere noise 64", htex);
+	htex->m_time = 10.f;
+	g_shapesMenu->AppendChild(menu);
+	g_curHtex = htex;
+	
+	htex = std::make_shared<AnimatedHypertexture>(128, htex->m_shader);
+	menu = createDefaultHypertextureMenu("sphere noise 128", htex);
+	htex->m_time = 10.f;
+	g_shapesMenu->AppendChild(menu);
+	
+	htex = std::make_shared<AnimatedHypertexture>(256, htex->m_shader);
+	menu = createDefaultHypertextureMenu("sphere noise 256", htex);
 	htex->m_time = 10.f;
 	g_shapesMenu->AppendChild(menu);
 
-	g_curHtex = htex;
 }
 
 static void initialize()
