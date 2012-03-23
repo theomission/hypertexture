@@ -227,7 +227,7 @@ void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3
 {
 	const ShaderInfo* shader = g_htexShader.get();
 
-	mat4 model = MakeScale(scale) * MakeTranslation(-0.5f, -0.5f, -0.5f);
+	mat4 model = MakeScale(scale) ;
 	mat4 modelInv = AffineInverse(model);
 	mat4 mvp = camera.GetProj() * (camera.GetView() * model);
 

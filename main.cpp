@@ -42,6 +42,8 @@ public:
 	std::shared_ptr<ShaderParams> m_params;
 	float m_time;
 	float m_lastUpdateTime;
+	float m_radius;
+	float m_innerRadius;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -53,6 +55,13 @@ static std::shared_ptr<Camera> g_debugCamera;
 
 static int g_menuEnabled = 0;
 static int g_wireframe = 0;
+static int g_debugDisplay = 0;
+static bool g_orbitCam = false;
+static float g_orbitAngle = 0.f;
+static vec3 g_orbitFocus;
+static vec3 g_orbitStart;
+static float g_orbitRate;
+static float g_orbitLength;
 
 static float g_fpsDisplay = 0.f;
 static vec3 g_fakeFocus = {-10.f, 0.f, 0.f};
@@ -93,10 +102,15 @@ static std::vector<CustomShaderAttr> g_debugTexUniformNames =
 
 enum AnimatedHtexBindType {
 	HTEXBIND_Time,
+	HTEXBIND_Radius,
+	HTEXBIND_InnerRadius,
 };
+
 static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
 {
 	{ HTEXBIND_Time, "time" },
+	{ HTEXBIND_Radius, "radius", true },
+	{ HTEXBIND_InnerRadius, "innerRadius", true },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -106,6 +120,10 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
 	std::make_shared<TweakVector>("cam.eye", &g_defaultEye, vec3(8.f, 0.f, 2.f)),
 	std::make_shared<TweakVector>("cam.focus", &g_defaultFocus),
 	std::make_shared<TweakVector>("cam.up", &g_defaultUp, vec3(0,0,1)),
+	std::make_shared<TweakVector>("cam.orbitFocus", &g_orbitFocus),
+	std::make_shared<TweakVector>("cam.orbitStart", &g_orbitStart, vec3(100,100,100)),
+	std::make_shared<TweakFloat>("cam.orbitRate", &g_orbitRate, M_PI/180.f),
+	std::make_shared<TweakFloat>("cam.orbitLength", &g_orbitLength, 1000.f),
 	std::make_shared<TweakVector>("lighting.sundir", &g_sundir, vec3(0,0,1)),
 	std::make_shared<TweakColor>("lighting.suncolor", &g_sunColor, Color(1,1,1)),
 };
@@ -120,7 +138,9 @@ void SaveCurrentCamera()
 ////////////////////////////////////////////////////////////////////////////////
 // Settings vars
 static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
+	std::make_shared<TweakBool>("cam.orbit", &g_orbitCam, false),
 	std::make_shared<TweakBool>("debug.wireframe", &g_wireframe, false),
+	std::make_shared<TweakBool>("debug.fpsDisplay", &g_debugDisplay, false),
 	std::make_shared<TweakBool>("debug.draw", 
 			[](){ return dbgdraw_IsEnabled(); },
 			[](bool enabled) { dbgdraw_SetEnabled(int(enabled)); },
@@ -154,6 +174,11 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 	std::vector<std::shared_ptr<MenuItem>> cameraMenu = {
 		std::make_shared<VecSliderMenuItem>("eye", &g_defaultEye),
 		std::make_shared<VecSliderMenuItem>("focus", &g_defaultFocus),
+		std::make_shared<VecSliderMenuItem>("orbit focus", &g_orbitFocus),
+		std::make_shared<VecSliderMenuItem>("orbit start", &g_orbitStart),
+		std::make_shared<FloatSliderMenuItem>("cam.orbitRate", &g_orbitRate),
+		std::make_shared<FloatSliderMenuItem>("cam.orbitLength", &g_orbitLength),
+		std::make_shared<BoolMenuItem>("toggle orbit cam", &g_orbitCam),
 		std::make_shared<ButtonMenuItem>("save current camera", SaveCurrentCamera)
 	};
 	std::vector<std::shared_ptr<MenuItem>> lightingMenu = {
@@ -163,6 +188,7 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 	std::vector<std::shared_ptr<MenuItem>> debugMenu = {
 		std::make_shared<ButtonMenuItem>("reload shaders", render_RefreshShaders),
 		std::make_shared<BoolMenuItem>("wireframe", &g_wireframe),
+		std::make_shared<BoolMenuItem>("fps & info", &g_debugDisplay),
 		std::make_shared<BoolMenuItem>("debugcam", camera_GetDebugCamera, camera_SetDebugCamera),
 		std::make_shared<IntSliderMenuItem>("debug texture id", 
 			[&g_debugTexture](){return int(g_debugTexture);},
@@ -299,6 +325,7 @@ static void draw(Framedata& frame)
 
 	checkGlError("draw(): post menu");
 
+	if(g_debugDisplay)
 	{
 		char fpsStr[32] = {};
 		static Color fpsCol = {1,1,1};
@@ -363,20 +390,28 @@ static void InitializeShaders()
 AnimatedHypertexture::AnimatedHypertexture(int numCells, const char* shaderFile)
 	: m_time(0.f)
 	, m_lastUpdateTime(0.f)
+	, m_radius(0.3f)
+	, m_innerRadius(0.2f)
 {
 	m_shader = render_CompileShader(shaderFile, g_animatedHtexUniforms);
 	m_params = std::make_shared<ShaderParams>(m_shader);
 	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
+	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
+	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
 	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, m_shader, m_params);
 }
 
 AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
 	: m_time(0.f)
 	, m_lastUpdateTime(0.f)
+	, m_radius(0.3f)
+	, m_innerRadius(0.2f)
 {
 	m_shader = shader;
 	m_params = std::make_shared<ShaderParams>(shader);
 	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
+	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
+	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
 	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, m_params);
 }
 
@@ -404,26 +439,44 @@ static std::shared_ptr<SubmenuMenuItem>
 	return menu;
 }
 
+void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex, 
+	const std::shared_ptr<SubmenuMenuItem>& menu)
+{
+	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("outer radius", 
+		[=]() { return htex->m_radius; },
+		[=](float r) { htex->m_radius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(); }) );
+	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("inner radius", 
+		[=]() { return htex->m_innerRadius; },
+		[=](float r) { htex->m_innerRadius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(); }) );
+}
+
 static void createGpuHypertextures()
 {
+	////////////////////////////////////////////////////////////////////////////////	
 	// Sphere noise 
 	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", [&g_curHtex]() {
 		if(g_curHtex) g_curHtex->m_gpuhtex->Update(); }));
 
 	auto htex = std::make_shared<AnimatedHypertexture>(64, "shaders/gen/spherenoise.glsl");
 	auto menu = createDefaultHypertextureMenu("sphere noise 64", htex);
-	htex->m_time = 10.f;
+	addSphereNoiseMenuItems(htex, menu);
+	htex->m_time = 0.f;
 	g_shapesMenu->AppendChild(menu);
 	g_curHtex = htex;
 	
 	htex = std::make_shared<AnimatedHypertexture>(128, htex->m_shader);
 	menu = createDefaultHypertextureMenu("sphere noise 128", htex);
-	htex->m_time = 10.f;
+	addSphereNoiseMenuItems(htex, menu);
+	htex->m_time = 0.f;
 	g_shapesMenu->AppendChild(menu);
 	
 	htex = std::make_shared<AnimatedHypertexture>(256, htex->m_shader);
 	menu = createDefaultHypertextureMenu("sphere noise 256", htex);
-	htex->m_time = 10.f;
+	addSphereNoiseMenuItems(htex, menu);
+	htex->m_time = 0.f;
+
+	////////////////////////////////////////////////////////////////////////////////	
+		
 	g_shapesMenu->AppendChild(menu);
 
 }
@@ -451,6 +504,23 @@ static void initialize()
 	createGpuHypertextures();
 }
 
+static void orbitcam_Update()
+{
+	if(!g_orbitCam) return;
+		
+	static const vec3 kUp(0,0,1);
+	vec3 startPos = g_orbitStart;
+	mat4 rotZ = RotateAround(kUp, g_orbitAngle);
+	vec3 pos = TransformPoint(rotZ, startPos);
+
+	pos *= g_orbitLength / Length(pos);
+
+	g_mainCamera->LookAt(g_orbitFocus, pos, kUp);
+
+	g_orbitAngle += g_dt * g_orbitRate;
+	g_orbitAngle = AngleWrap(g_orbitAngle);
+}
+
 static void update(Framedata& frame)
 {
 	struct timespec current_time;
@@ -465,6 +535,7 @@ static void update(Framedata& frame)
 		float dt = diffTime / 1e6f;
 		g_dt = Min(dt, 0.1f);
 
+		orbitcam_Update();
 		// move stuff with dt
 //		if(g_curHtex)
 //			g_curHtex->m_time += g_dt;
@@ -612,6 +683,7 @@ int main(void)
 										g_curCamera->MoveBy(off);
 									}
 									break;
+
 								default: break;
 							}
 						}
@@ -698,6 +770,19 @@ int main(void)
 				move_camera(CAMDIR_BACK);
 			if(keystate[SDLK_d])
 				move_camera(CAMDIR_RIGHT);
+
+			if(g_curHtex)
+			{
+				float prevtime = g_curHtex->m_time;
+				if(keystate[SDLK_UP])
+					g_curHtex->m_time += g_dt;
+				if(keystate[SDLK_DOWN])
+					g_curHtex->m_time -= g_dt;
+
+				if(prevtime != g_curHtex->m_time) {
+					g_curHtex->m_gpuhtex->Update();
+				}
+			}
 		}
 
 		// clear old frame scratch space and recreate it.
