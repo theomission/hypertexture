@@ -195,6 +195,49 @@ std::shared_ptr<Geom> render_GenerateSphereGeom(int subdivH, int subdivV)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+std::shared_ptr<Geom> render_GeneratePlaneGeom()
+{
+	static const float vertData[] =
+	{
+		-1,	1,	0,	// pos
+		0,	0,	1,	// normal
+		0, 1,		// uv
+		-1, -1, 0,
+		0,	0,	1,	// normal
+		0, 0,		// uv
+		1, 1, 0,
+		0,	0,	1,	// normal
+		1, 1,		// uv
+		1, -1, 0,
+		0,	0,	1,	// normal
+		1, 0,		// uv
+	};
+
+	static const unsigned short idxData[] = 
+	{
+		0,1,2,3
+	};
+
+	const int numVerts = ARRAY_SIZE(vertData)/8;
+	const int numIndices = ARRAY_SIZE(idxData);
+
+	const int vtxStride = sizeof(float) * (3+3+2);
+	const int normalOff = 3 * sizeof(float);
+	const int uvOff = 6 * sizeof(float);
+
+	return std::make_shared<Geom>(
+		numVerts, vertData,
+		numIndices, idxData,
+		vtxStride, GL_TRIANGLE_STRIP,
+		std::vector<GeomBindPair>{
+			{GEOM_Pos, 3, 0},
+			{GEOM_Normal, 3, normalOff},
+			{GEOM_Uv, 2, uvOff}
+		}
+	);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 void checkGlError(const char* str)
 {	
 	static char s_lastError[256];

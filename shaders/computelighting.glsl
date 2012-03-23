@@ -14,7 +14,7 @@ void main()
 }
 #endif
 
-#define NUM_LIGHTING_STEPS 32
+#define NUM_LIGHTING_STEPS 32 
 
 vec3 computeLightingTransmittance(vec3 pos)
 {
@@ -24,11 +24,13 @@ vec3 computeLightingTransmittance(vec3 pos)
 	vec3 factor = -absorption * scatteringColor * len;
 	for(int i = 0; i < NUM_LIGHTING_STEPS; ++i)
 	{
-		if(any(lessThan(pos, vec3(0)))) break;
-		if(any(greaterThan(pos, vec3(1)))) break;
+		if(any(lessThan(pos, vec3(0)))) break; 
+		if(any(greaterThan(pos, vec3(1.0)))) break; 
+
 		float rho = texture(densityMap, pos).x * densityMult;
 		vec3 localT = exp(factor * rho);
-		T *= localT;
+		T = T * localT;
+
 		pos += step;
 	}
 	return T;	

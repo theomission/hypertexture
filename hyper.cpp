@@ -230,6 +230,7 @@ void GpuHypertexture::Update(const vec3& sundir)
 	auto submit = [this, sundir]() {
 		const int numCells = m_numCells;
 		glEnable(GL_CULL_FACE);
+		ViewportState vpState(0, 0, numCells, numCells);
 
 		m_fboDensity.Bind();
 			
@@ -243,7 +244,6 @@ void GpuHypertexture::Update(const vec3& sundir)
 		for(int z = 0; z < numCells; ++z, zCoord += zInc)
 		{
 			m_fboDensity.BindLayer(z);
-			ViewportState vpState(0, 0, numCells, numCells);
 
 			glBegin(GL_TRIANGLE_STRIP);
 			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
@@ -273,10 +273,10 @@ void GpuHypertexture::Update(const vec3& sundir)
 		glUniform1f(densityMultLoc, m_densityMult);
 		glUniform3fv(scatteringColor, 1, &m_scatteringColor.r);
 
+		zCoord = -1.f;
 		for(int z = 0; z < numCells; ++z, zCoord += zInc)
 		{
 			m_fboTrans.BindLayer(z);
-			ViewportState vpState(0, 0, numCells, numCells);
 
 			glUseProgram(shader->m_program);
 

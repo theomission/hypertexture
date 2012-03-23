@@ -83,6 +83,7 @@ private:
 
 std::shared_ptr<Geom> render_GenerateSphereGeom(int subdivH, int subdivV);
 std::shared_ptr<Geom> render_GenerateBoxGeom();
+std::shared_ptr<Geom> render_GeneratePlaneGeom();
 
 void checkGlError(const char* str);
 

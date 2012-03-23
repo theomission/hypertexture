@@ -85,6 +85,10 @@ static int g_recordFps = 30;
 static int g_recordFrameCount = 300;
 
 ////////////////////////////////////////////////////////////////////////////////
+static std::shared_ptr<Geom> g_groundGeom;
+
+static std::shared_ptr<ShaderInfo> g_groundShader;
+
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
 enum DebugTexUniformLocType {
 	DTEXLOC_Tex1D,
@@ -300,6 +304,32 @@ static void drawDebugTexture(void)
 	}
 }
 
+static void drawGround(const vec3& sundir)
+{
+	mat4 projview = g_curCamera->GetProj() * g_curCamera->GetView();
+	mat4 model = MakeTranslation(0,0,-100) * MakeScale(500);
+	mat4 modelIT = TransposeOfInverse(model);
+	mat4 mvp = projview * model;
+
+	const ShaderInfo* shader = g_groundShader.get();
+	GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
+	GLint modelLoc = shader->m_uniforms[BIND_Model];
+	GLint modelITLoc = shader->m_uniforms[BIND_ModelIT];
+	GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
+	GLint sunColorLoc = shader->m_uniforms[BIND_SunColor];
+	GLint eyePosLoc = shader->m_uniforms[BIND_Eyepos];
+	glUseProgram(shader->m_program);
+
+	glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
+	glUniformMatrix4fv(modelLoc, 1, 0, model.m);
+	glUniformMatrix4fv(modelITLoc, 1, 0, modelIT.m);
+	glUniform3fv(sundirLoc, 1, &sundir.x);
+	glUniform3fv(sunColorLoc, 1, &g_sunColor.r);
+	glUniform3fv(eyePosLoc, 1, &g_curCamera->GetPos().x);
+
+	g_groundGeom->Render(*shader);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 static void draw(Framedata& frame)
 {
@@ -323,10 +353,15 @@ static void draw(Framedata& frame)
 	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
 	glEnable(GL_DEPTH_TEST);
 
+	// ground render
+	drawGround(normalizedSundir);
+
+	// voxel render
 	if(g_htex) g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 	if(g_curHtex) 
 		g_curHtex->m_gpuhtex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 
+	// debug draw
 	dbgdraw_Render(*g_curCamera);
 	checkGlError("draw(): post dbgdraw");
 
@@ -502,24 +537,27 @@ static void createGpuHypertextures()
 	auto htex = std::make_shared<AnimatedHypertexture>(64, shader);
 	auto menu = createDefaultHypertextureMenu("sphere noise 64", htex);
 	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 0.f;
+	htex->m_time = 2.f;
+	htex->m_gpuhtex->SetAbsorption(0.9);
 	g_shapesMenu->AppendChild(menu);
 	g_curHtex = htex;
 	
 	htex = std::make_shared<AnimatedHypertexture>(128, htex->m_shader);
 	menu = createDefaultHypertextureMenu("sphere noise 128", htex);
 	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 0.f;
+	htex->m_time = 2.f;
+	htex->m_gpuhtex->SetAbsorption(0.9);
 	g_shapesMenu->AppendChild(menu);
 	
 	htex = std::make_shared<AnimatedHypertexture>(256, htex->m_shader);
 	menu = createDefaultHypertextureMenu("sphere noise 256", htex);
 	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 0.f;
+	htex->m_time = 2.f;
+	htex->m_gpuhtex->SetAbsorption(0.9);
+	g_shapesMenu->AppendChild(menu);
 
 	////////////////////////////////////////////////////////////////////////////////	
 		
-	g_shapesMenu->AppendChild(menu);
 
 }
 
@@ -533,6 +571,8 @@ static void initialize()
 	menu_SetTop(MakeMenu());
 	ui_Init();
 	hyper_Init();
+	g_groundGeom = render_GeneratePlaneGeom();
+	g_groundShader = render_CompileShader("shaders/ground.glsl");
 
 	g_mainCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
 	g_debugCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
