@@ -431,10 +431,12 @@ void TopMenuItem::Render()
 	for(int i = 0, c = GetChildren().size(); i < c; ++i)	
 	{
 		auto child = GetChildren()[i];
+		float titlew,titleh;
+		child->GetTitleDims(titlew, titleh);
 		const Color* col = (GetPos() == i) ? &kTextSelColor : &kTextColor;
 		if(child->HasFlag(MENUSTATE_Active)) col = &kTextActiveColor;
 		child->DrawTitle(x, y, *col);
-		x += 2.f * kHSpace;
+		x += 2.f * kHSpace + titlew;
 	}
 
 	for(auto child: GetChildren())

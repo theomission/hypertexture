@@ -13,12 +13,39 @@ static std::shared_ptr<ShaderInfo> g_htexShader;
 enum HtexUniformLocType {
 	HTEXBIND_DensityMap,
 	HTEXBIND_EyePosInModel,
+	HTEXBIND_Absorption,
+	HTEXBIND_PhaseConstants,
+	HTEXBIND_TransMap,
+	HTEXBIND_DensityMult,
+	HTEXBIND_AbsorptionColor,
 };
 
 static std::vector<CustomShaderAttr> g_htexUniforms =
 {
 	{ HTEXBIND_DensityMap, "densityMap" },
 	{ HTEXBIND_EyePosInModel, "eyePosInModel" },
+	{ HTEXBIND_Absorption, "absorption" },
+	{ HTEXBIND_PhaseConstants, "phaseConstants" },
+	{ HTEXBIND_TransMap, "transMap" },
+	{ HTEXBIND_DensityMult, "densityMult" },
+	{ HTEXBIND_AbsorptionColor, "absorptionColor" },
+};
+
+static std::shared_ptr<ShaderInfo> g_lightingShader;
+
+enum LightingUniformLocType {
+	LBIND_Absorption,
+	LBIND_DensityMap,
+	LBIND_DensityMult,
+	LBIND_ScatteringColor,
+};
+
+static std::vector<CustomShaderAttr> g_lightingUniforms =
+{
+	{ LBIND_Absorption, "absorption" },
+	{ LBIND_DensityMap, "densityMap" },
+	{ LBIND_DensityMult, "densityMult" },
+	{ LBIND_ScatteringColor, "scatteringColor" },
 };
 
 static std::shared_ptr<Geom> g_boxGeom;
@@ -29,6 +56,9 @@ void hyper_Init()
 {
 	if(!g_htexShader)
 		g_htexShader = render_CompileShader("shaders/hypertexture.glsl", g_htexUniforms);
+	if(!g_lightingShader)
+		g_lightingShader = render_CompileShader("shaders/computelighting.glsl", g_lightingUniforms);
+
 	g_boxGeom = CreateHypertextureBoxGeom();
 }
 
@@ -162,47 +192,58 @@ GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>
 	, m_shader(shader)
 	, m_genParams(params)
 	, m_ready(true)
-	, m_fbo{{numCells, numCells, numCells}, {numCells, numCells, numCells}}
-	, m_curFbo(0)
+	, m_fboDensity{numCells, numCells, numCells}
+	, m_fboTrans{numCells, numCells, numCells}
 	, m_completedSlices(0)
+	, m_absorption(0.1)
+	, m_g(0.1)
+	, m_phaseConstants{}
+	, m_color(1,1,1)
+	, m_densityMult(1.0)
+	, m_scatteringColor(1,1,1)
+	, m_absorptionColor(1,1,1)
 {
-	m_fbo[0].AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
-	m_fbo[0].Create();
-	m_fbo[1].AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
-	m_fbo[1].Create();
-	Update();
-}
+	m_fboDensity.AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
+	m_fboDensity.Create();
+	
+	m_fboTrans.AddTexture3D(GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+	m_fboTrans.Create();
 
-GpuHypertexture::~GpuHypertexture()
-{
+	UpdatePhaseConstants();
 }
 	
-void GpuHypertexture::Update()
+void GpuHypertexture::UpdatePhaseConstants()
+{
+	float g = m_g;
+	float g2 = g*g;
+	m_phaseConstants[0] = (3.0 * (1.f - g2)) / (2.f * (2.f + g2));
+	m_phaseConstants[1] = 1 + g2;
+	m_phaseConstants[2] = -2*g;
+}
+	
+void GpuHypertexture::Update(const vec3& sundir)
 {
 	if(!m_ready) return;
 	m_ready = false;
 	m_completedSlices = 0;
 
-	auto submit = [this]() {
+	auto submit = [this, sundir]() {
 		const int numCells = m_numCells;
+		glEnable(GL_CULL_FACE);
 
-		const Framebuffer& fbo = m_fbo[m_curFbo];
-		fbo.Bind();
+		m_fboDensity.Bind();
+			
+		const ShaderInfo* shader = m_shader.get();
+		GLint posLoc = shader->m_attrs[GEOM_Pos];
+		glUseProgram(shader->m_program);
+		if(m_genParams) m_genParams->Submit();
 	
 		float zCoord = -1.f;
 		const float zInc = 2.f / numCells;
-		glEnable(GL_CULL_FACE);
 		for(int z = 0; z < numCells; ++z, zCoord += zInc)
 		{
-			fbo.BindLayer(z);
+			m_fboDensity.BindLayer(z);
 			ViewportState vpState(0, 0, numCells, numCells);
-
-			const ShaderInfo* shader = m_shader.get();
-			glUseProgram(shader->m_program);
-
-			if(m_genParams) m_genParams->Submit();
-
-			GLint posLoc = m_shader->m_attrs[GEOM_Pos];
 
 			glBegin(GL_TRIANGLE_STRIP);
 			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
@@ -210,13 +251,46 @@ void GpuHypertexture::Update()
 			glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
 			glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
 			glEnd();
-			checkGlError("GpuHypertexture::KickSlice - submit");
-
-			++m_completedSlices;
+			checkGlError("GpuHypertexture::Update - submit");
 		}
+
+		m_fboTrans.Bind();
+
+		shader = g_lightingShader.get();
+		glUseProgram(shader->m_program);
+		posLoc = shader->m_attrs[GEOM_Pos];
+		GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
+		GLint absorptionLoc = shader->m_custom[LBIND_Absorption];
+		GLint densityMapLoc = shader->m_custom[LBIND_DensityMap];
+		GLint densityMultLoc = shader->m_custom[LBIND_DensityMult];
+		GLint scatteringColor = shader->m_custom[LBIND_ScatteringColor];
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_3D, m_fboDensity.GetTexture(0));
+		glUniform1i(densityMapLoc, 0);
+		glUniform3fv(sundirLoc, 1, &sundir.x);
+		glUniform1f(absorptionLoc, m_absorption);
+		glUniform1f(densityMultLoc, m_densityMult);
+		glUniform3fv(scatteringColor, 1, &m_scatteringColor.r);
+
+		for(int z = 0; z < numCells; ++z, zCoord += zInc)
+		{
+			m_fboTrans.BindLayer(z);
+			ViewportState vpState(0, 0, numCells, numCells);
+
+			glUseProgram(shader->m_program);
+
+			glBegin(GL_TRIANGLE_STRIP);
+			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
+			glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
+			glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
+			glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
+			glEnd();
+			checkGlError("GpuHypertexture::Update - submit lighting");
+		}
+
 		glDisable(GL_CULL_FACE);
 
-		m_curFbo = m_curFbo ^ 1;
 		m_ready = true;
 	};
 
@@ -236,22 +310,41 @@ void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3
 	GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
 	GLint densityMapLoc = shader->m_custom[HTEXBIND_DensityMap];
 	GLint eyePosInModelLoc = shader->m_custom[HTEXBIND_EyePosInModel];
+	GLint absorptionLoc = shader->m_custom[HTEXBIND_Absorption];
 	GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
 	GLint sunColorLoc = shader->m_uniforms[BIND_SunColor];
+	GLint colorLoc = shader->m_uniforms[BIND_Color];
+	GLint transMapLoc = shader->m_custom[HTEXBIND_TransMap];
+	GLint phaseConstantsLoc = shader->m_custom[HTEXBIND_PhaseConstants];
+	GLint densityMultLoc = shader->m_custom[HTEXBIND_DensityMult];
+	GLint absorptionColorLoc = shader->m_custom[HTEXBIND_AbsorptionColor];
 
 	glUseProgram(shader->m_program);
 	glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
 
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_3D, m_fbo[m_curFbo ^ 1].GetTexture(0));
+	glBindTexture(GL_TEXTURE_3D, m_fboDensity.GetTexture(0));
 	glUniform1i(densityMapLoc, 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_3D, m_fboTrans.GetTexture(0));
+	glUniform1i(transMapLoc, 1);
 	glUniform3fv(eyePosInModelLoc, 1, &eyePos.x);
 	glUniform3fv(sundirLoc, 1, &sundir.x);
 	glUniform3fv(sunColorLoc, 1, &sunColor.r);
+	glUniform1f(absorptionLoc, m_absorption);
+	glUniform3fv(phaseConstantsLoc, 1, m_phaseConstants);
+	glUniform3fv(colorLoc, 1, &m_color.r);
+	glUniform1f(densityMultLoc, m_densityMult);
+	glUniform3fv(absorptionColorLoc, 1, &m_absorptionColor.r);
 
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendEquation(GL_FUNC_ADD);
+	
 	glEnable(GL_CULL_FACE);
 	g_boxGeom->Render(*shader);
 	glDisable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -35,7 +35,6 @@ std::shared_ptr<Camera> g_curCamera;
 class AnimatedHypertexture
 {
 public:
-	AnimatedHypertexture(int numCells, const char* shaderFile);
 	AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo> &shader);
 	std::shared_ptr<GpuHypertexture> m_gpuhtex;
 	std::shared_ptr<ShaderInfo> m_shader;
@@ -82,6 +81,9 @@ static vec3 g_sundir;
 static GLuint g_debugTexture;
 static int g_debugTextureSplit;
 
+static int g_recordFps = 30;
+static int g_recordFrameCount = 300;
+
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
 enum DebugTexUniformLocType {
@@ -104,6 +106,7 @@ enum AnimatedHtexBindType {
 	HTEXBIND_Time,
 	HTEXBIND_Radius,
 	HTEXBIND_InnerRadius,
+	HTEXBIND_Absorption,
 };
 
 static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
@@ -149,6 +152,9 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
 			[](){ return dbgdraw_IsDepthTestEnabled(); },
 			[](bool enabled) { dbgdraw_SetDepthTestEnabled(int(enabled)); },
 			true),
+
+	std::make_shared<TweakInt>("record.fps", &g_recordFps, 30),
+	std::make_shared<TweakInt>("record.count", &g_recordFrameCount, 300),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -176,8 +182,8 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 		std::make_shared<VecSliderMenuItem>("focus", &g_defaultFocus),
 		std::make_shared<VecSliderMenuItem>("orbit focus", &g_orbitFocus),
 		std::make_shared<VecSliderMenuItem>("orbit start", &g_orbitStart),
-		std::make_shared<FloatSliderMenuItem>("cam.orbitRate", &g_orbitRate),
-		std::make_shared<FloatSliderMenuItem>("cam.orbitLength", &g_orbitLength),
+		std::make_shared<FloatSliderMenuItem>("orbit rate", &g_orbitRate),
+		std::make_shared<FloatSliderMenuItem>("orbit length", &g_orbitLength),
 		std::make_shared<BoolMenuItem>("toggle orbit cam", &g_orbitCam),
 		std::make_shared<ButtonMenuItem>("save current camera", SaveCurrentCamera)
 	};
@@ -207,8 +213,14 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 		g_shapesMenu,
 		std::make_shared<SubmenuMenuItem>("debug", std::move(debugMenu)),
 	};
+	std::vector<std::shared_ptr<MenuItem>> recordMenu = {
+		std::make_shared<IntSliderMenuItem>("record fps", &g_recordFps),
+		std::make_shared<IntSliderMenuItem>("record frame count", &g_recordFrameCount),
+		std::make_shared<ButtonMenuItem>("start", [](){ std::cout << "todo" << std::endl; }),
+	};
 	std::vector<std::shared_ptr<MenuItem>> topMenu = {
-		std::make_shared<SubmenuMenuItem>("tweak", std::move(tweakMenu))
+		std::make_shared<SubmenuMenuItem>("tweak", std::move(tweakMenu)),
+		std::make_shared<SubmenuMenuItem>("record", std::move(recordMenu)),
 	};
 	return std::make_shared<TopMenuItem>(topMenu);
 }
@@ -298,7 +310,10 @@ static void draw(Framedata& frame)
 	glEnable(GL_DEPTH_TEST);
 	int scissorHeight = g_screen.m_width/1.777;
 	glScissor(0, 0.5*(g_screen.m_height - scissorHeight), g_screen.m_width, scissorHeight);
-	if(!camera_GetDebugCamera()) glEnable(GL_SCISSOR_TEST);
+	if(!camera_GetDebugCamera()) {
+		glEnable(GL_SCISSOR_TEST);
+	}
+
 	if(g_wireframe) glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	else glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -387,32 +402,19 @@ static void InitializeShaders()
 //	});
 //}
 
-AnimatedHypertexture::AnimatedHypertexture(int numCells, const char* shaderFile)
-	: m_time(0.f)
-	, m_lastUpdateTime(0.f)
-	, m_radius(0.3f)
-	, m_innerRadius(0.2f)
-{
-	m_shader = render_CompileShader(shaderFile, g_animatedHtexUniforms);
-	m_params = std::make_shared<ShaderParams>(m_shader);
-	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
-	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
-	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
-	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, m_shader, m_params);
-}
-
 AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
 	: m_time(0.f)
 	, m_lastUpdateTime(0.f)
 	, m_radius(0.3f)
 	, m_innerRadius(0.2f)
-{
+{	
 	m_shader = shader;
 	m_params = std::make_shared<ShaderParams>(shader);
 	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
 	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
 	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
 	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, m_params);
+	m_gpuhtex->Update(Normalize(g_sundir));
 }
 
 static std::shared_ptr<SubmenuMenuItem> 
@@ -422,6 +424,11 @@ static std::shared_ptr<SubmenuMenuItem>
 		SubmenuMenuItem::ChildListType{
 			std::make_shared<ButtonMenuItem>("activate", 
 				[=, &g_curHtex](){ g_curHtex = htex; }),
+			std::make_shared<ButtonMenuItem>("reload shader",
+				[=](){
+					htex->m_shader->Recompile();
+					htex->m_gpuhtex->Update(Normalize(g_sundir));
+				}),
 			std::make_shared<ButtonMenuItem>("reset time", 
 				[=](){ 
 					htex->m_time = 0.f; 
@@ -432,7 +439,41 @@ static std::shared_ptr<SubmenuMenuItem>
 				[=, &g_curHtex](float time) { 
 					htex->m_time = time; 
 					if(g_curHtex == htex) 
-						htex->m_gpuhtex->Update(); 
+						htex->m_gpuhtex->Update(Normalize(g_sundir)); 
+				}),
+			std::make_shared<FloatSliderMenuItem>("absorption",
+				[=]() { return htex->m_gpuhtex->GetAbsorption(); },
+				[=, &g_curHtex](float a) {
+					htex->m_gpuhtex->SetAbsorption(a);
+					if(g_curHtex == htex)
+						htex->m_gpuhtex->Update(Normalize(g_sundir));
+				}),
+			std::make_shared<FloatSliderMenuItem>("g",
+				[=]() { return htex->m_gpuhtex->GetPhaseConstant(); },
+				[=, &g_curHtex](float g) {
+					htex->m_gpuhtex->SetPhaseConstant(g);
+				}),
+			std::make_shared<ColorSliderMenuItem>("color",
+				[=]() { return htex->m_gpuhtex->GetColor(); },
+				[=, &g_curHtex](const Color& c) {
+					htex->m_gpuhtex->SetColor(c);
+				}),
+			std::make_shared<FloatSliderMenuItem>("density multiplier",
+				[=]() { return htex->m_gpuhtex->GetDensityMultiplier(); },
+				[=, &g_curHtex](float f) {
+					htex->m_gpuhtex->SetDensityMultiplier(f);
+				}),
+			std::make_shared<ColorSliderMenuItem>("absorption color",
+				[=]() { return htex->m_gpuhtex->GetAbsorptionColor(); },
+				[=, &g_curHtex](const Color& c) {
+					htex->m_gpuhtex->SetAbsorptionColor(c);
+				}),
+			std::make_shared<ColorSliderMenuItem>("scattering color",
+				[=]() { return htex->m_gpuhtex->GetScatteringColor(); },
+				[=, &g_curHtex](const Color& c) {
+					htex->m_gpuhtex->SetScatteringColor(c);
+					if(g_curHtex == htex)
+						htex->m_gpuhtex->Update(Normalize(g_sundir));
 				}),
 		}
 	);
@@ -444,10 +485,10 @@ void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex,
 {
 	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("outer radius", 
 		[=]() { return htex->m_radius; },
-		[=](float r) { htex->m_radius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(); }) );
+		[=](float r) { htex->m_radius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(Normalize(g_sundir)); }) );
 	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("inner radius", 
 		[=]() { return htex->m_innerRadius; },
-		[=](float r) { htex->m_innerRadius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(); }) );
+		[=](float r) { htex->m_innerRadius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(Normalize(g_sundir)); }) );
 }
 
 static void createGpuHypertextures()
@@ -455,9 +496,10 @@ static void createGpuHypertextures()
 	////////////////////////////////////////////////////////////////////////////////	
 	// Sphere noise 
 	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", [&g_curHtex]() {
-		if(g_curHtex) g_curHtex->m_gpuhtex->Update(); }));
+		if(g_curHtex) g_curHtex->m_gpuhtex->Update(Normalize(g_sundir)); }));
 
-	auto htex = std::make_shared<AnimatedHypertexture>(64, "shaders/gen/spherenoise.glsl");
+	auto shader = render_CompileShader("shaders/gen/spherenoise.glsl", g_animatedHtexUniforms);
+	auto htex = std::make_shared<AnimatedHypertexture>(64, shader);
 	auto menu = createDefaultHypertextureMenu("sphere noise 64", htex);
 	addSphereNoiseMenuItems(htex, menu);
 	htex->m_time = 0.f;
@@ -536,9 +578,6 @@ static void update(Framedata& frame)
 		g_dt = Min(dt, 0.1f);
 
 		orbitcam_Update();
-		// move stuff with dt
-//		if(g_curHtex)
-//			g_curHtex->m_time += g_dt;
 	}
 	else g_dt = 0.f;
 
@@ -558,18 +597,6 @@ static void update(Framedata& frame)
 	menu_Update(g_dt);		
 
 	gputask_Join();
-
-//	if(g_curHtex)
-//	{
-//		if(g_curHtex->m_time - g_curHtex->m_lastUpdateTime > 1.f) 
-//		{
-//			std::cout << "Tick... " << g_curHtex->m_time << " " << g_curHtex->m_lastUpdateTime << std::endl;
-//			g_curHtex->m_lastUpdateTime = g_curHtex->m_time;
-//			g_curHtex->m_gpuhtex->Update();
-//		}
-//	}
-//
-
 	gputask_Kick();
 
 	task_Update();
@@ -780,7 +807,7 @@ int main(void)
 					g_curHtex->m_time -= g_dt;
 
 				if(prevtime != g_curHtex->m_time) {
-					g_curHtex->m_gpuhtex->Update();
+					g_curHtex->m_gpuhtex->Update(Normalize(g_sundir));
 				}
 			}
 		}
