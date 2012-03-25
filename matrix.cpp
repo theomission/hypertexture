@@ -98,6 +98,20 @@ mat4 Compute2DProj(float w, float h, float znear, float zfar)
 	return result;
 }
 
+mat4 ComputeOrthoProj(float w, float h, float znear, float zfar)
+{
+	mat4 result;
+	float zlen = zfar - znear;
+	float inv_zlen = 1.0 / zlen;
+	bzero(result.m, sizeof(float)*16);
+	result.m[0] = 2.f / w;
+	result.m[5] = 2.f / h;
+	result.m[10] = -2.f * (inv_zlen);
+	result.m[14] = - (zfar + znear) * inv_zlen;
+	result.m[15] = 1.f;
+	return result;
+}
+
 mat4 Compute3DProj(float degfov, float aspect, float znear, float zfar)
 {
 	const float fov2 = 0.5 * degfov * (M_PI / 180.f);
@@ -289,5 +303,48 @@ mat4 MatFromFrame(const vec3& xaxis, const vec3& yaxis, const vec3& zaxis, const
 	result.m[14] = trans.z;
 	result.m[15] = 1.f;
 	return result;
+}
+
+mat4 ComputeDirShadowView(const vec3& focus, const vec3 &dir, float distance)
+{
+	vec3 a, b, c = Normalize(dir);
+	vec3 pos = focus + distance * dir;
+	// compute an orthogonal basis with a to the right, b up, dir back.
+	// TODO: fix this for extreme angles
+	static const vec3 kZAxis = {0,0,1};
+
+	a = Normalize(Cross(kZAxis, dir));
+	b = Normalize(Cross(dir, a)); // should already be normalized.
+
+	mat4 result;
+	result.m[0] = a.x;
+	result.m[1] = b.x;
+	result.m[2] = c.x;
+	result.m[3] = 0.f;
+
+	result.m[4] = a.y;
+	result.m[5] = b.y;
+	result.m[6] = c.y;
+	result.m[7] = 0.f;
+
+	result.m[8] = a.z;
+	result.m[9] = b.z;
+	result.m[10] = c.z;
+	result.m[11] = 0.f;
+
+	result.m[12] = -Dot(a,pos);
+	result.m[13] = -Dot(b,pos);
+	result.m[14] = -Dot(c,pos);
+	result.m[15] = 1.f;
+	return result;
+}	
+
+mat4 MakeCoordinateScale(float scale, float add)
+{
+	return mat4(
+		0.5, 0, 0, 0,
+		0, 0.5, 0, 0,
+		0, 0, 0.5, 0,
+		0.5, 0.5, 0.5, 1);
 }
 

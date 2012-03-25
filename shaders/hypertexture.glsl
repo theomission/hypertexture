@@ -61,15 +61,15 @@ void main()
 	vec3 curColor = vec3(0);
 	float alpha = 0.0;
 	vec3 T = vec3(1.0);
-	vec3 Tfactor = -absorption * len * absorptionColor;
-	vec3 colorFactor = color * len;
+	vec3 Tfactor = -absorption * len * absorptionColor * densityMult;
+	vec3 colorFactor = color * len * densityMult;
 
 	for(int i = 0; i < NUM_STEPS; ++i)
 	{
 		if(any(lessThan(position, vec3(0)))) break;
 		if(any(greaterThan(position, vec3(1)))) break;
 
-		float sample = texture(densityMap, position).r * densityMult;
+		float sample = texture(densityMap, position).r;
 		vec3 Tlocal = exp(Tfactor * sample);
 		T *= Tlocal;
 

@@ -89,6 +89,17 @@ static std::shared_ptr<Geom> g_groundGeom;
 
 static std::shared_ptr<ShaderInfo> g_groundShader;
 
+enum GroundUniformLocType {
+	GRNDBIND_ShadowMatrix,
+	GRNDBIND_ShadowMap,
+};
+
+static std::vector<CustomShaderAttr> g_groundUniforms =
+{
+	{ GRNDBIND_ShadowMatrix, "matShadow" },
+	{ GRNDBIND_ShadowMap, "shadowMap" },
+};
+
 static std::shared_ptr<ShaderInfo> g_debugTexShader;
 enum DebugTexUniformLocType {
 	DTEXLOC_Tex1D,
@@ -307,7 +318,7 @@ static void drawDebugTexture(void)
 static void drawGround(const vec3& sundir)
 {
 	mat4 projview = g_curCamera->GetProj() * g_curCamera->GetView();
-	mat4 model = MakeTranslation(0,0,-100) * MakeScale(500);
+	mat4 model = MakeTranslation(0,0,-100) * MakeScale(vec3(500));
 	mat4 modelIT = TransposeOfInverse(model);
 	mat4 mvp = projview * model;
 
@@ -318,8 +329,21 @@ static void drawGround(const vec3& sundir)
 	GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
 	GLint sunColorLoc = shader->m_uniforms[BIND_SunColor];
 	GLint eyePosLoc = shader->m_uniforms[BIND_Eyepos];
-	glUseProgram(shader->m_program);
+	GLint matShadowLoc = shader->m_custom[GRNDBIND_ShadowMatrix];
+	GLint shadowMapLoc = shader->m_custom[GRNDBIND_ShadowMap];
 
+	glUseProgram(shader->m_program);
+	
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, g_curHtex ? g_curHtex->m_gpuhtex->GetShadowTexture() : 0);
+	glUniform1i(shadowMapLoc, 0);
+	
+	mat4 htexShadowMat = g_curHtex ? g_curHtex->m_gpuhtex->GetShadowMatrix() : (mat4::identity_t());
+	mat4 matShadow = 
+		MakeCoordinateScale(0.5f, 0.5f) *
+		htexShadowMat * model;
+
+	glUniformMatrix4fv(matShadowLoc, 1, 0, matShadow.m);
 	glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
 	glUniformMatrix4fv(modelLoc, 1, 0, model.m);
 	glUniformMatrix4fv(modelITLoc, 1, 0, modelIT.m);
@@ -359,7 +383,7 @@ static void draw(Framedata& frame)
 	// voxel render
 	if(g_htex) g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 	if(g_curHtex) 
-		g_curHtex->m_gpuhtex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
+		g_curHtex->m_gpuhtex->Render(*g_curCamera, normalizedSundir, g_sunColor);
 
 	// debug draw
 	dbgdraw_Render(*g_curCamera);
@@ -448,7 +472,7 @@ AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<S
 	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
 	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
 	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
-	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, m_params);
+	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, vec3(100.0), m_params);
 	m_gpuhtex->Update(Normalize(g_sundir));
 }
 
@@ -572,7 +596,7 @@ static void initialize()
 	ui_Init();
 	hyper_Init();
 	g_groundGeom = render_GeneratePlaneGeom();
-	g_groundShader = render_CompileShader("shaders/ground.glsl");
+	g_groundShader = render_CompileShader("shaders/ground.glsl", g_groundUniforms);
 
 	g_mainCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);
 	g_debugCamera = std::make_shared<Camera>(30.f, g_screen.m_aspect);

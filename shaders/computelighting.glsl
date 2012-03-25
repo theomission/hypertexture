@@ -21,13 +21,13 @@ vec3 computeLightingTransmittance(vec3 pos)
 	vec3 step = sundir / NUM_LIGHTING_STEPS;
 	float len = length(step);
 	vec3 T = vec3(1.0);
-	vec3 factor = -absorption * scatteringColor * len;
+	vec3 factor = -absorption * scatteringColor * len * densityMult;
 	for(int i = 0; i < NUM_LIGHTING_STEPS; ++i)
 	{
 		if(any(lessThan(pos, vec3(0)))) break; 
 		if(any(greaterThan(pos, vec3(1.0)))) break; 
 
-		float rho = texture(densityMap, pos).x * densityMult;
+		float rho = texture(densityMap, pos).x ;
 		vec3 localT = exp(factor * rho);
 		T = T * localT;
 

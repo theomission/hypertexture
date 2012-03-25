@@ -48,6 +48,23 @@ static std::vector<CustomShaderAttr> g_lightingUniforms =
 	{ LBIND_ScatteringColor, "scatteringColor" },
 };
 
+static std::shared_ptr<ShaderInfo> g_shadowShader;
+
+enum ShadowUniformLocType {
+	SBIND_DensityMap,
+	SBIND_DensityMult,
+	SBIND_Absorption,
+	SBIND_AbsorptionColor,
+};
+
+static std::vector<CustomShaderAttr> g_shadowUniforms =
+{
+	{ SBIND_DensityMap, "densityMap" },
+	{ SBIND_DensityMult, "densityMult" },
+	{ SBIND_Absorption, "absorption" },
+	{ SBIND_AbsorptionColor, "absorptionColor" },
+};
+
 static std::shared_ptr<Geom> g_boxGeom;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -58,8 +75,10 @@ void hyper_Init()
 		g_htexShader = render_CompileShader("shaders/hypertexture.glsl", g_htexUniforms);
 	if(!g_lightingShader)
 		g_lightingShader = render_CompileShader("shaders/computelighting.glsl", g_lightingUniforms);
-
-	g_boxGeom = CreateHypertextureBoxGeom();
+	if(!g_shadowShader)
+		g_shadowShader = render_CompileShader("shaders/cloudshadow.glsl", g_shadowUniforms);
+	if(!g_boxGeom)
+		g_boxGeom = CreateHypertextureBoxGeom();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -187,6 +206,7 @@ void Hypertexture::Render(const Camera& camera, const vec3& scale, const vec3& s
 
 ////////////////////////////////////////////////////////////////////////////////
 GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader,
+	const vec3& scale,
 	const std::shared_ptr<ShaderParams>& params)
 	: m_numCells(numCells)
 	, m_shader(shader)
@@ -194,20 +214,28 @@ GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>
 	, m_ready(true)
 	, m_fboDensity{numCells, numCells, numCells}
 	, m_fboTrans{numCells, numCells, numCells}
-	, m_completedSlices(0)
+	, m_fboShadow{kShadowDim,kShadowDim}
+	, m_model( MakeScale(scale) )
+	, m_matShadow( (mat4::identity_t()) )
 	, m_absorption(0.1)
 	, m_g(0.1)
 	, m_phaseConstants{}
 	, m_color(1,1,1)
 	, m_densityMult(1.0)
-	, m_scatteringColor(1,1,1)
-	, m_absorptionColor(1,1,1)
+	, m_scatteringColor(1.f,1.f,1.f)
+	, m_absorptionColor(1.f,1.f,1.f)
 {
 	m_fboDensity.AddTexture3D(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
 	m_fboDensity.Create();
 	
 	m_fboTrans.AddTexture3D(GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	m_fboTrans.Create();
+
+	// this isn't a real shadow map, just a projection shadow. This is because it's rendered with a
+	// sort of proxy geometry and the shadow intensity depends on the alpha of the cloud.
+	m_fboShadow.AddTexture(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
+	m_fboShadow.Create();
+	std::cout << "fbo shadow " << m_fboShadow.GetTexture(0) << std::endl;
 
 	UpdatePhaseConstants();
 }
@@ -225,15 +253,14 @@ void GpuHypertexture::Update(const vec3& sundir)
 {
 	if(!m_ready) return;
 	m_ready = false;
-	m_completedSlices = 0;
 
 	auto submit = [this, sundir]() {
 		const int numCells = m_numCells;
 		glEnable(GL_CULL_FACE);
-		ViewportState vpState(0, 0, numCells, numCells);
 
+		// Update the density field
 		m_fboDensity.Bind();
-			
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		const ShaderInfo* shader = m_shader.get();
 		GLint posLoc = shader->m_attrs[GEOM_Pos];
 		glUseProgram(shader->m_program);
@@ -241,28 +268,67 @@ void GpuHypertexture::Update(const vec3& sundir)
 	
 		float zCoord = -1.f;
 		const float zInc = 2.f / numCells;
-		for(int z = 0; z < numCells; ++z, zCoord += zInc)
 		{
-			m_fboDensity.BindLayer(z);
+			ViewportState vpState(0, 0, numCells, numCells);
+			for(int z = 0; z < numCells; ++z, zCoord += zInc)
+			{
+				m_fboDensity.BindLayer(z);
 
-			glBegin(GL_TRIANGLE_STRIP);
-			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
-			glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
-			glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
-			glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
-			glEnd();
-			checkGlError("GpuHypertexture::Update - submit");
+				glBegin(GL_TRIANGLE_STRIP);
+				glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
+				glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
+				glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
+				glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
+				glEnd();
+				checkGlError("GpuHypertexture::Update - submit");
+			}
+		}
+		// Update the shadows
+		m_fboShadow.Bind();
+		glClearBufferfv(GL_COLOR, 0, (float[]){0.f,0.f,0.f,1.f});
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+		shader = g_shadowShader.get();
+		glUseProgram(shader->m_program);
+		posLoc = shader->m_attrs[GEOM_Pos];
+		GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
+		GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
+		GLint densityMapLoc = shader->m_custom[SBIND_DensityMap];
+		GLint densityMultLoc = shader->m_custom[SBIND_DensityMult];
+		GLint absorptionLoc = shader->m_custom[SBIND_Absorption];
+		GLint absorptionColorLoc = shader->m_custom[SBIND_AbsorptionColor];
+
+		m_matShadow = 
+			ComputeOrthoProj(kShadowDim, kShadowDim, 1, 4.f * numCells) *
+			ComputeDirShadowView(vec3(0), sundir, 2.5f * numCells) ;
+
+		mat4 mvp = m_matShadow * m_model;
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_3D, m_fboDensity.GetTexture(0));
+		glUniform1i(densityMapLoc, 0);
+		glUniform3fv(sundirLoc, 1, &sundir.x);
+		glUniform1f(densityMultLoc, m_densityMult);
+		glUniform1f(absorptionLoc, m_absorption);
+		glUniform3fv(absorptionColorLoc, 1, &m_absorptionColor.r);
+		glUniformMatrix4fv(mvpLoc, 1, 0, mvp.m);
+		
+		{
+			ViewportState vpState(0,0,kShadowDim,kShadowDim);
+			g_boxGeom->Render(*shader);
 		}
 
+		// Update the transmittance with respect to sun
 		m_fboTrans.Bind();
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 		shader = g_lightingShader.get();
 		glUseProgram(shader->m_program);
 		posLoc = shader->m_attrs[GEOM_Pos];
-		GLint sundirLoc = shader->m_uniforms[BIND_Sundir];
-		GLint absorptionLoc = shader->m_custom[LBIND_Absorption];
-		GLint densityMapLoc = shader->m_custom[LBIND_DensityMap];
-		GLint densityMultLoc = shader->m_custom[LBIND_DensityMult];
+		sundirLoc = shader->m_uniforms[BIND_Sundir];
+		absorptionLoc = shader->m_custom[LBIND_Absorption];
+		densityMapLoc = shader->m_custom[LBIND_DensityMap];
+		densityMultLoc = shader->m_custom[LBIND_DensityMult];
 		GLint scatteringColor = shader->m_custom[LBIND_ScatteringColor];
 
 		glActiveTexture(GL_TEXTURE0);
@@ -274,19 +340,22 @@ void GpuHypertexture::Update(const vec3& sundir)
 		glUniform3fv(scatteringColor, 1, &m_scatteringColor.r);
 
 		zCoord = -1.f;
-		for(int z = 0; z < numCells; ++z, zCoord += zInc)
 		{
-			m_fboTrans.BindLayer(z);
+			ViewportState vpState(0, 0, numCells, numCells);
+			for(int z = 0; z < numCells; ++z, zCoord += zInc)
+			{
+				m_fboTrans.BindLayer(z);
 
-			glUseProgram(shader->m_program);
+				glUseProgram(shader->m_program);
 
-			glBegin(GL_TRIANGLE_STRIP);
-			glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
-			glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
-			glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
-			glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
-			glEnd();
-			checkGlError("GpuHypertexture::Update - submit lighting");
+				glBegin(GL_TRIANGLE_STRIP);
+				glVertexAttrib3f(posLoc, -1.f, -1.f, zCoord);
+				glVertexAttrib3f(posLoc, 1.f, -1.f, zCoord);
+				glVertexAttrib3f(posLoc, -1.f, 1.f, zCoord);
+				glVertexAttrib3f(posLoc, 1.f, 1.f, zCoord);
+				glEnd();
+				checkGlError("GpuHypertexture::Update - submit lighting");
+			}
 		}
 
 		glDisable(GL_CULL_FACE);
@@ -297,13 +366,12 @@ void GpuHypertexture::Update(const vec3& sundir)
 	gputask_Append(std::make_shared<GpuTask>(submit, nullptr));
 }
 
-void GpuHypertexture::Render(const Camera& camera, const vec3& scale, const vec3& sundir, const Color& sunColor)
+void GpuHypertexture::Render(const Camera& camera, const vec3& sundir, const Color& sunColor)
 {
 	const ShaderInfo* shader = g_htexShader.get();
 
-	mat4 model = MakeScale(scale) ;
-	mat4 modelInv = AffineInverse(model);
-	mat4 mvp = camera.GetProj() * (camera.GetView() * model);
+	mat4 modelInv = AffineInverse(m_model);
+	mat4 mvp = camera.GetProj() * (camera.GetView() * m_model);
 
 	vec3 eyePos = TransformPoint(modelInv, camera.GetPos());
 

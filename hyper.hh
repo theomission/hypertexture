@@ -34,10 +34,12 @@ private:
 class GpuHypertexture
 {
 public:
+	static constexpr int kShadowDim = 512;
 	GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader, 
+		const vec3& scale,
 		const std::shared_ptr<ShaderParams>& params = nullptr);
 
-	void Render(const Camera& camera, const vec3& scale, const vec3& sundir, const Color& sunColor);
+	void Render(const Camera& camera, const vec3& sundir, const Color& sunColor);
 
 	void Update(const vec3& sundir);
 
@@ -53,6 +55,10 @@ public:
 	void SetScatteringColor(const Color& c) { m_scatteringColor= c; }
 	const Color& GetAbsorptionColor() const { return m_absorptionColor; }
 	void SetAbsorptionColor(const Color& c) { m_absorptionColor = c; }
+
+	GLuint GetShadowTexture() const { return m_fboShadow.GetTexture(0); }
+	const mat4& GetModel() const { return m_model; }
+	const mat4& GetShadowMatrix() const { return m_matShadow; }
 private:
 	void UpdatePhaseConstants();
 
@@ -62,7 +68,9 @@ private:
 	bool m_ready;
 	Framebuffer m_fboDensity;
 	Framebuffer m_fboTrans;
-	int m_completedSlices;
+	Framebuffer m_fboShadow;
+	mat4 m_model;
+	mat4 m_matShadow;
 
 	float m_absorption;
 	float m_g; // phase constant

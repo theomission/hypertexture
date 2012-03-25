@@ -10,7 +10,7 @@ public:
 	float x, y, z;
 
 	vec3() {}
-	vec3(float v) : x(v), y(v), z(v) {}
+	explicit vec3(float v) : x(v), y(v), z(v) {}
 	vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
 	void Set(float x_, float y_, float z_) ;
 	vec3 operator+(const vec3& r) const;

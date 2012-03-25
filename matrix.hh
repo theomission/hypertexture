@@ -117,9 +117,13 @@ vec3 TransformVec(const mat4& m, const vec3& v);
 vec3 TransformPoint(const mat4& m, const vec3& v);
 void TransformFloat4(float* out, const mat4& m, const float *in);
 
+// ortho projection specifically for the front end. Basically y is inversedin a weird way.
 mat4 Compute2DProj(float w, float h, float znear, float zfar);
+// normal ortho projection
+mat4 ComputeOrthoProj(float w, float h, float znear, float zfar);
 mat4 Compute3DProj(float degfov, float aspect, float znear, float zfar);
 mat4 ComputeFrustumProj(float left, float right, float bottom, float top, float znear, float zfar);
+mat4 ComputeDirShadowView(const vec3& focus, const vec3 &dir, float distance);
 
 mat4 RotateAround(const vec3& axis, float rads);
 mat4 AffineInverse(const mat4& m);
@@ -129,6 +133,7 @@ mat4 MakeTranslation(const vec3& t);
 mat4 MakeScale(const vec3& v) ;
 mat4 MakeScale(float sx, float sy, float sz);
 mat4 MatFromFrame(const vec3& xaxis, const vec3& yaxis, const vec3& zaxis, const vec3& trans);
+mat4 MakeCoordinateScale(float scale, float add);
 
 inline mat4 TransposeOfInverse(const mat4& m) {
 	return Transpose(AffineInverse(m));
