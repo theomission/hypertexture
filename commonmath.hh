@@ -84,6 +84,14 @@ public:
 		return Min(Max(val, m_min), m_max);
 	}
 
+	T Interpolate(float t) const {
+		t = Clamp(t, 0.f, 1.f);
+		float range = m_max - m_min;
+		return T(t*range + m_min);
+	}
+
+	bool Valid() const { return m_max > m_min; }
+
 	T m_min;
 	T m_max;
 };

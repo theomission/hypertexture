@@ -120,8 +120,10 @@ public:
 class IntSliderMenuItem : public MenuItem
 {
 public:
-	IntSliderMenuItem(const std::string& name, std::function<int()> get, std::function<void(int)> set);
-	IntSliderMenuItem(const std::string& name, int* ival);
+	IntSliderMenuItem(const std::string& name, std::function<int()> get, std::function<void(int)> set, 
+		int scale = 1, const Limits<int>& lm = Limits<int>());
+	IntSliderMenuItem(const std::string& name, int* ival, 
+		int scale = 1, const Limits<int>& lm = Limits<int>());
 	
 	bool OnKey(int key, int mod) ;
 	void Render() ;
@@ -139,8 +141,9 @@ class FloatSliderMenuItem : public MenuItem
 {
 public:
 	FloatSliderMenuItem(const std::string& name, std::function<float()> get, std::function<void(float)> set,
-		float scale = 1.f);
-	FloatSliderMenuItem(const std::string& name, float* fval, float scale = 1.f);
+		float scale = 1.f, const Limits<float>& lm = Limits<float>());
+	FloatSliderMenuItem(const std::string& name, float* fval, float scale = 1.f,
+		const Limits<float>& lm = Limits<float>());
 	
 	bool OnKey(int key, int mod) ;
 	void Render() ;
@@ -190,10 +193,14 @@ private:
 class VecSliderMenuItem : public MenuItem
 {
 public:
-	VecSliderMenuItem(const std::string& name, vec3* val);
+	VecSliderMenuItem(const std::string& name, vec3* val,
+		float scale = 1.0f,
+		const Limits<vec3>& lm = Limits<vec3>());
 	VecSliderMenuItem(const std::string& name,
 		std::function<vec3()> get,
-		std::function<void(const vec3&)> set);
+		std::function<void(const vec3&)> set,
+		float scale,
+		const Limits<vec3>& lm = Limits<vec3>());
 	
 	bool OnKey(int key, int mod) ;
 	void Render() ;

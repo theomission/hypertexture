@@ -50,6 +50,7 @@ OBJECTS := \
 	$(OBJDIR)/poolmem.o \
 	$(OBJDIR)/ui.o \
 	$(OBJDIR)/hyper.o \
+	$(OBJDIR)/timer.o \
 
 .PHONY: clean strip
 
@@ -127,6 +128,9 @@ $(OBJDIR)/ui.o: ui.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 $(OBJDIR)/hyper.o: hyper.cpp
+	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
+
+$(OBJDIR)/timer.o: timer.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 -include $(OBJECTS:%.o=%.d)

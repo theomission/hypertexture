@@ -445,22 +445,29 @@ void TopMenuItem::Render()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-IntSliderMenuItem::IntSliderMenuItem(const std::string& name, std::function<int()> get, std::function<void(int)> set)
+IntSliderMenuItem::IntSliderMenuItem(const std::string& name,
+	std::function<int()> get,
+	std::function<void(int)> set,
+	int scale,
+	const Limits<int>& lm)
 	: MenuItem(name)
 	, m_get(get)
 	, m_set(set) 
-	, m_limits()
-	, m_scale(1)
+	, m_limits(lm)
+	, m_scale(Max(scale,1))
 {
 	UpdateData();
 }
 	
-IntSliderMenuItem::IntSliderMenuItem(const std::string& name, int* ival)
+IntSliderMenuItem::IntSliderMenuItem(const std::string& name,
+	int* ival,
+	int scale,
+	const Limits<int>& lm)
 	: MenuItem(name)
 	, m_get([=](){ return *ival; })
 	, m_set([=](int val){ *ival = val; }) 
-	, m_limits()
-	, m_scale(1)
+	, m_limits(lm)
+	, m_scale(Max(scale,1))
 {
 	UpdateData();
 }
@@ -512,11 +519,12 @@ FloatSliderMenuItem::FloatSliderMenuItem(
 	const std::string& name,
 	std::function<float()> get,
 	std::function<void(float)> set, 
-	float scale)
+	float scale,
+	const Limits<float>& lm)
 	: MenuItem(name)
 	, m_get(get)
 	, m_set(set)
-	, m_limits()
+	, m_limits(lm)
 	, m_scale(scale)
 {
 	UpdateData();
@@ -525,11 +533,12 @@ FloatSliderMenuItem::FloatSliderMenuItem(
 FloatSliderMenuItem::FloatSliderMenuItem(
 	const std::string& name,
 	float* fval,
-	float scale)
+	float scale,
+	const Limits<float>& lm)
 	: MenuItem(name)
 	, m_get([=](){ return *fval; })
 	, m_set([=](float val) { *fval = val; })
-	, m_limits()
+	, m_limits(lm)
 	, m_scale(scale)
 {
 	UpdateData();
@@ -689,6 +698,7 @@ bool ColorSliderMenuItem::OnKey(int key, int mod)
 	}
 
 	Color cur = m_get();
+	Color old = cur;
 	switch(m_pos)
 	{
 		case COLSLIDE_Red:
@@ -702,7 +712,8 @@ bool ColorSliderMenuItem::OnKey(int key, int mod)
 			break;
 		default:break;
 	}
-	m_set(cur);
+	if(old != cur)
+		m_set(cur);
 	UpdateData();
 	return true;
 }
@@ -710,23 +721,27 @@ bool ColorSliderMenuItem::OnKey(int key, int mod)
 ////////////////////////////////////////////////////////////////////////////////
 VecSliderMenuItem::VecSliderMenuItem(const std::string& name,
 	std::function<vec3()> get,
-	std::function<void(const vec3&)> set)
+	std::function<void(const vec3&)> set,
+	float scale,
+	const Limits<vec3>& lm)
 	: MenuItem(name)
 	, m_get(get)
 	, m_set(set)
-	, m_limits()
-	, m_scale(1.f)
+	, m_limits(lm)
+	, m_scale(scale)
 	, m_pos(0)
 {
 	UpdateData();
 }
 
-VecSliderMenuItem::VecSliderMenuItem(const std::string& name, vec3* val)
+VecSliderMenuItem::VecSliderMenuItem(const std::string& name, vec3* val,
+	float scale,
+	const Limits<vec3>& lm)
 	: MenuItem(name)
 	, m_get([=]() { return *val; })
 	, m_set([=](const vec3& v) { *val = v; })
-	, m_limits()
-	, m_scale(1.f)
+	, m_limits(lm)
+	, m_scale(scale)
 	, m_pos(0)
 {
 	UpdateData();
@@ -921,6 +936,7 @@ bool VecSliderMenuItem::OnKey(int key, int mod)
 	}
 
 	vec3 val = m_get();
+	vec3 old = val;
 	float radAmt = (M_PI / 180.f) * incAmt;
 	mat4 rotmat;
 	static const vec3 kXAxis = {1,0,0};
@@ -957,8 +973,12 @@ bool VecSliderMenuItem::OnKey(int key, int mod)
 			break;
 		default:break;
 	}
-	m_set(m_limits(val));
-	UpdateData();
+	vec3 newVal = m_limits(val);
+	if(newVal != old)
+	{
+		m_set(newVal);
+		UpdateData();
+	}
 	return true;
 }
 

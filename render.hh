@@ -136,6 +136,8 @@ void render_RefreshShaders();
 
 void render_SetTextureParameters(int sWrap = GL_REPEAT, int tWrap = GL_REPEAT,
 	int magFilter = GL_LINEAR, int minFilter = GL_LINEAR_MIPMAP_LINEAR);
+void render_SaveScreen(const char* filename);
+void render_SaveTGA(const char* filename, int w, int h, unsigned char* bytes);
 
 ////////////////////////////////////////////////////////////////////////////////
 class ShaderParams

@@ -4,8 +4,9 @@
 #include <cfloat>
 #include <SDL/SDL.h>
 #include <GL/glew.h>
-#include <ctime>
 #include <memory>
+#include <sstream>
+#include <sys/stat.h>
 #include "common.hh"
 #include "render.hh"
 #include "vec.hh"
@@ -23,6 +24,7 @@
 #include "ui.hh"
 #include "gputask.hh"
 #include "hyper.hh"
+#include "timer.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
 // globals
@@ -47,7 +49,6 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 // file scope globals
-static float g_dt;
 static vec3 g_focus, g_defaultFocus, g_defaultEye, g_defaultUp;
 static std::shared_ptr<Camera> g_mainCamera;
 static std::shared_ptr<Camera> g_debugCamera;
@@ -68,11 +69,12 @@ static Viewframe g_debugViewframe;
 
 static int g_frameCount;
 static int g_frameSampleCount;
-static unsigned long long g_frameSampleTime;
-static unsigned long long g_lastTime = 0;
+static Timer g_frameTimer;
+
+static float g_dt;
+static Clock g_timer;
 
 static std::shared_ptr<AnimatedHypertexture> g_curHtex;;
-static std::shared_ptr<Hypertexture> g_htex;
 static std::shared_ptr<SubmenuMenuItem> g_shapesMenu;
 
 static Color g_sunColor;
@@ -81,8 +83,12 @@ static vec3 g_sundir;
 static GLuint g_debugTexture;
 static int g_debugTextureSplit;
 
+static bool g_screenshotRequested = false;
+static bool g_recording = false;
 static int g_recordFps = 30;
+static int g_recordCurFrame;
 static int g_recordFrameCount = 300;
+static Limits<float> g_recordTimeRange;
 
 ////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<Geom> g_groundGeom;
@@ -132,6 +138,10 @@ static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+// forward decls
+static void record_Start();
+
+////////////////////////////////////////////////////////////////////////////////
 // tweak vars
 extern float g_tileDrawErrorThreshold;
 static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
@@ -170,6 +180,8 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
 
 	std::make_shared<TweakInt>("record.fps", &g_recordFps, 30),
 	std::make_shared<TweakInt>("record.count", &g_recordFrameCount, 300),
+	std::make_shared<TweakFloat>("record.timeStart", &g_recordTimeRange.m_min, 1.0),
+	std::make_shared<TweakFloat>("record.timeEnd", &g_recordTimeRange.m_max, 2.0),
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -229,15 +241,49 @@ static std::shared_ptr<TopMenuItem> MakeMenu()
 		std::make_shared<SubmenuMenuItem>("debug", std::move(debugMenu)),
 	};
 	std::vector<std::shared_ptr<MenuItem>> recordMenu = {
+		std::make_shared<ButtonMenuItem>("take screenshot", [](){ g_screenshotRequested = true; }),
 		std::make_shared<IntSliderMenuItem>("record fps", &g_recordFps),
 		std::make_shared<IntSliderMenuItem>("record frame count", &g_recordFrameCount),
-		std::make_shared<ButtonMenuItem>("start", [](){ std::cout << "todo" << std::endl; }),
+		std::make_shared<FloatSliderMenuItem>("start time", &g_recordTimeRange.m_min),
+		std::make_shared<FloatSliderMenuItem>("end time", &g_recordTimeRange.m_max),
+		std::make_shared<ButtonMenuItem>("start", record_Start),
 	};
 	std::vector<std::shared_ptr<MenuItem>> topMenu = {
 		std::make_shared<SubmenuMenuItem>("tweak", std::move(tweakMenu)),
 		std::make_shared<SubmenuMenuItem>("record", std::move(recordMenu)),
 	};
 	return std::make_shared<TopMenuItem>(topMenu);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+static void record_Start()
+{
+	if(g_recording) return;
+
+	g_recordCurFrame = 0;
+	g_dt = 1.f / g_recordFps;
+	g_recording = true;
+}
+
+static void record_SaveFrame()
+{
+	ASSERT(g_recording);
+
+	mkdir("frames", S_IRUSR | S_IWUSR | S_IXUSR);
+	std::stringstream sstr ;
+	sstr << "frames/frame_" << g_recordCurFrame << ".tga" ;
+	std::cout << "Saving frame " << sstr.str() << std::endl;
+	render_SaveScreen(sstr.str().c_str());
+}
+
+static void record_Advance()
+{
+	ASSERT(g_recording);
+
+	++g_recordCurFrame;
+	if(g_recordCurFrame >= g_recordFrameCount)
+		g_recording = false;
+	std::cout << "done." << std::endl;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -381,9 +427,15 @@ static void draw(Framedata& frame)
 	drawGround(normalizedSundir);
 
 	// voxel render
-	if(g_htex) g_htex->Render(*g_curCamera, 100.f*vec3(1,1,1), normalizedSundir, g_sunColor);
 	if(g_curHtex) 
 		g_curHtex->m_gpuhtex->Render(*g_curCamera, normalizedSundir, g_sunColor);
+
+	// everything below here is feedback for the user, so record the frame if we're recording
+	if(g_recording)
+	{
+		record_SaveFrame();
+		record_Advance();
+	}
 
 	// debug draw
 	dbgdraw_Render(*g_curCamera);
@@ -414,6 +466,11 @@ static void draw(Framedata& frame)
 
 	task_RenderProgress();
 	checkGlError("end draw");
+
+	if(g_screenshotRequested) {
+		render_SaveScreen("screenshot.tga");
+		g_screenshotRequested = false;
+	}
 	
 	SDL_GL_SwapBuffers();
 	checkGlError("swap");
@@ -425,41 +482,6 @@ static void InitializeShaders()
 	g_debugTexShader = render_CompileShader("shaders/debugtex2d.glsl", g_debugTexUniformNames);
 	checkGlError("InitializeShaders");
 }
-
-//void createHyperTexture()
-//{
-//	std::shared_ptr<Noise> noise = std::make_shared<Noise>();
-//
-//	const float radius = 0.50f;
-//	const float innerRadius = 0.3f;
-//	const float invdiff = 1.f/(radius - innerRadius);
-//	const vec3 center(0.5);
-//	g_htex = std::make_shared<Hypertexture>(256,
-//	[=](float x, float y, float z)
-//	{
-//		vec3 pt(x,y,z);
-//
-//		//float alongLine = Dot(pt - lineStart, lineDir);
-//		//vec3 closestPt = lineStart + lineDir * alongLine;
-//		//closestPt.x += 0.1 * sinf(alongLine * 7.f); 
-//		//closestPt.y += 0.1 * cosf(alongLine * 9.f); 
-//	
-//		// turbulence
-//		vec3 diff = pt - center;
-//		float len = Length(diff) ;
-//		float n = 0.2 * (noise->FbmSample(pt, 0.7f, 2.f, 10));
-//		len += n;
-//
-//		float outerDensity = 1.f - SmoothStep(radius - 0.01f, radius + 0.01f, len);
-//		float innerDensity = SmoothStep(innerRadius - 0.01f, innerRadius + 0.01f, len);
-//
-//		float t = (len - innerRadius) * invdiff;
-//		t = Clamp(t, 0.f, 1.f);
-//		float density = Lerp(t, innerDensity, outerDensity);
-//
-//		return density;
-//	});
-//}
 
 AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
 	: m_time(0.f)
@@ -497,21 +519,17 @@ static std::shared_ptr<SubmenuMenuItem>
 				[=]() { return htex->m_time;  },
 				[=, &g_curHtex](float time) { 
 					htex->m_time = time; 
-					if(g_curHtex == htex) 
-						htex->m_gpuhtex->Update(Normalize(g_sundir)); 
 				}),
 			std::make_shared<FloatSliderMenuItem>("absorption",
 				[=]() { return htex->m_gpuhtex->GetAbsorption(); },
 				[=, &g_curHtex](float a) {
 					htex->m_gpuhtex->SetAbsorption(a);
-					if(g_curHtex == htex)
-						htex->m_gpuhtex->Update(Normalize(g_sundir));
-				}),
+				}, 0.1f),
 			std::make_shared<FloatSliderMenuItem>("g",
 				[=]() { return htex->m_gpuhtex->GetPhaseConstant(); },
 				[=, &g_curHtex](float g) {
 					htex->m_gpuhtex->SetPhaseConstant(g);
-				}),
+				}, 0.1f, Limits<float>{-1.f, 1.f}),
 			std::make_shared<ColorSliderMenuItem>("color",
 				[=]() { return htex->m_gpuhtex->GetColor(); },
 				[=, &g_curHtex](const Color& c) {
@@ -531,8 +549,6 @@ static std::shared_ptr<SubmenuMenuItem>
 				[=]() { return htex->m_gpuhtex->GetScatteringColor(); },
 				[=, &g_curHtex](const Color& c) {
 					htex->m_gpuhtex->SetScatteringColor(c);
-					if(g_curHtex == htex)
-						htex->m_gpuhtex->Update(Normalize(g_sundir));
 				}),
 		}
 	);
@@ -544,10 +560,10 @@ void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex,
 {
 	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("outer radius", 
 		[=]() { return htex->m_radius; },
-		[=](float r) { htex->m_radius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(Normalize(g_sundir)); }) );
+		[=](float r) { htex->m_radius = r; }, 0.1f));
 	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("inner radius", 
 		[=]() { return htex->m_innerRadius; },
-		[=](float r) { htex->m_innerRadius = r; if(g_curHtex == htex) htex->m_gpuhtex->Update(Normalize(g_sundir)); }) );
+		[=](float r) { htex->m_innerRadius = r; }, 0.1f));
 }
 
 static void createGpuHypertextures()
@@ -581,8 +597,6 @@ static void createGpuHypertextures()
 	g_shapesMenu->AppendChild(menu);
 
 	////////////////////////////////////////////////////////////////////////////////	
-		
-
 }
 
 static void initialize()
@@ -629,31 +643,36 @@ static void orbitcam_Update()
 
 static void update(Framedata& frame)
 {
-	struct timespec current_time;
-	clock_gettime(CLOCK_MONOTONIC, &current_time);
-	unsigned long long timeUsec = (unsigned long long)(current_time.tv_sec * 1000000) +
-		(unsigned long long)(current_time.tv_nsec / 1000);
-	
-	unsigned long long diffTime = timeUsec - g_lastTime;
-	if(diffTime > 16000)
+	if(!g_recording)
 	{
-		g_lastTime = timeUsec;
-		float dt = diffTime / 1e6f;
-		g_dt = Min(dt, 0.1f);
-
-		orbitcam_Update();
+		constexpr float kMinDt = 1.0f/60.f;
+		g_timer.Step(kMinDt);
+		g_dt = g_timer.GetDt();
 	}
-	else g_dt = 0.f;
-
-	if(g_frameCount - g_frameSampleCount > 30 * 5)
+	else
 	{
-		unsigned long long diffTime = timeUsec - g_frameSampleTime;
-		g_frameSampleTime = timeUsec;
+		if(g_curHtex && g_recordTimeRange.Valid())
+		{
+			float time = g_recordTimeRange.Interpolate(g_recordCurFrame / (float)g_recordFrameCount);
+			g_curHtex->m_time = time;
+			g_curHtex->m_gpuhtex->Update(Normalize(g_sundir));
+		}
+		g_dt = 1.0 / g_recordFps;
+	}
 
-		float delta = diffTime / 1e6f;
-		float fps = (g_frameCount - g_frameSampleCount) / delta;
+	orbitcam_Update();
+
+	int numFrames = g_frameCount - g_frameSampleCount;
+	if(numFrames >= 30 * 5)
+	{
+		g_frameTimer.Stop();
+		
+		float delta = g_frameTimer.GetTime();
+		float fps = (numFrames) / delta;
 		g_frameSampleCount = g_frameCount;
 		g_fpsDisplay = fps;
+
+		g_frameTimer.Start();
 	}
 
 	g_curCamera->Compute();
@@ -717,6 +736,7 @@ int main(void)
 	glEnable(GL_TEXTURE_3D);
 
 	initialize();
+	g_frameTimer.Start();
 
 	checkGlError("after init");
 	int done = 0;
@@ -773,6 +793,10 @@ int main(void)
 										vec3 off = -10.f * g_curCamera->GetViewframe().m_up;
 										g_curCamera->MoveBy(off);
 									}
+									break;
+								case SDLK_p:
+									if(event.key.keysym.mod & KMOD_SHIFT)
+										g_screenshotRequested = true;
 									break;
 
 								default: break;

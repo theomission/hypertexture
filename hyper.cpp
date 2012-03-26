@@ -299,7 +299,7 @@ void GpuHypertexture::Update(const vec3& sundir)
 		GLint absorptionColorLoc = shader->m_custom[SBIND_AbsorptionColor];
 
 		m_matShadow = 
-			ComputeOrthoProj(kShadowDim, kShadowDim, 1, 4.f * numCells) *
+			ComputeOrthoProj(kShadowDim, kShadowDim, 1, 4.5f * numCells) *
 			ComputeDirShadowView(vec3(0), sundir, 2.5f * numCells) ;
 
 		mat4 mvp = m_matShadow * m_model;

@@ -1,6 +1,7 @@
 #include "render.hh"
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
 #include <cstring>
 #include <cmath>
 #include <cctype>
@@ -803,5 +804,94 @@ ScissorState::~ScissorState()
 	glScissor(m_oldScissor[0], m_oldScissor[1], m_oldScissor[2], m_oldScissor[3]);
 	if(!m_prevEnabled)
 		glDisable(GL_SCISSOR_TEST);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void render_SaveScreen(const char* filename)
+{
+	glReadBuffer(GL_BACK);
+
+	int viewport[4];
+	glGetIntegerv(GL_VIEWPORT, viewport);
+
+	int w = viewport[2];
+	int h = viewport[3];
+
+	std::vector<unsigned char> bytes(w*h*3);
+	glReadPixels(viewport[0], viewport[1], w, h, GL_RGB, GL_UNSIGNED_BYTE, &bytes[0]);	
+
+	render_SaveTGA(filename, w, h, &bytes[0]);
+}
+
+struct TGAHeader
+{
+	unsigned char m_idLength;
+	unsigned char m_colorMapType;
+	unsigned char m_imageType;
+
+	unsigned short m_colorMapOffset;
+	unsigned short m_colorMapCount;
+	unsigned char m_colorMapBpp;
+
+	unsigned short m_xOrigin;
+	unsigned short m_yOrigin;
+	unsigned short m_width;
+	unsigned short m_height;
+	unsigned char m_bpp;
+	unsigned char m_desc;
+};
+
+enum TGAImageTypeFlags 
+{
+	TGA_IMAGE_TYPE_TRUE_COLOR = 0x02,
+	TGA_IMAGE_TYPE_RLE = 0x08,
+};
+
+enum TGAImageDescFlags
+{
+	TGA_IMAGE_DESC_TOP = 0x20,
+	TGA_IMAGE_DESC_RIGHT = 0x10
+};
+
+void render_SaveTGA(const char* filename, int w, int h, unsigned char* bytes)
+{
+	std::ofstream out(filename, std::ios_base::binary | std::ios_base::out);
+	if(!out) {
+		std::cerr << "Failed to open " << filename << " for writing." << std::endl;
+		return;
+	}
+
+	TGAHeader header = {};
+	header.m_imageType = TGA_IMAGE_TYPE_TRUE_COLOR;
+	header.m_width = w;
+	header.m_height = h;
+	header.m_bpp = 32;
+
+	// write individual members because the actual format is tightly packed
+	out.write(reinterpret_cast<const char*>(&header.m_idLength), sizeof(header.m_idLength));
+	out.write(reinterpret_cast<const char*>(&header.m_colorMapType), sizeof(header.m_colorMapType));
+	out.write(reinterpret_cast<const char*>(&header.m_imageType), sizeof(header.m_imageType));
+	out.write(reinterpret_cast<const char*>(&header.m_colorMapOffset), sizeof(header.m_colorMapOffset));
+	out.write(reinterpret_cast<const char*>(&header.m_colorMapCount), sizeof(header.m_colorMapCount));
+	out.write(reinterpret_cast<const char*>(&header.m_colorMapBpp), sizeof(header.m_colorMapBpp));
+	out.write(reinterpret_cast<const char*>(&header.m_xOrigin), sizeof(header.m_xOrigin));
+	out.write(reinterpret_cast<const char*>(&header.m_yOrigin), sizeof(header.m_yOrigin));
+	out.write(reinterpret_cast<const char*>(&header.m_width), sizeof(header.m_width));
+	out.write(reinterpret_cast<const char*>(&header.m_height), sizeof(header.m_height));
+	out.write(reinterpret_cast<const char*>(&header.m_bpp), sizeof(header.m_bpp));
+	out.write(reinterpret_cast<const char*>(&header.m_desc), sizeof(header.m_desc));
+
+	for(int offset = 0, y = h - 1; y>=0; --y)
+	{
+		for(int x = 0; x < w; ++x, offset += 3)
+		{
+			unsigned int data = 
+				0xff000000 |
+				(bytes[offset] << 16) |
+				(bytes[offset+1] << 8) |
+				(bytes[offset+2]);
+			out.write(reinterpret_cast<const char*>(&data), sizeof(data));
+		}
+	}
 }
 
