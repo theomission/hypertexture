@@ -23,10 +23,10 @@ static std::vector<std::shared_ptr<MenuItem>> g_updating;
 constexpr static float kFontSize = 18.f;
 constexpr static float kHSpace = 10.f;
 constexpr static float kVSpace = 15.f;
-static Color kTextColor = {0.2,0.6f,0.2f};
-static Color kTextSelColor = {0.4f,0.6f,0.2f};
-static Color kTextActiveColor = {0.8f,0.8f,0.2f};
-static Color kColWhite = {1,1,1};
+static const Color kTextColor = {0.2,0.6f,0.2f};
+static const Color kTextSelColor = {0.4f,0.6f,0.2f};
+static const Color kTextActiveColor = {0.8f,0.8f,0.2f};
+static const Color kColWhite = {1,1,1};
 	
 constexpr static float kInc = 1.f;
 constexpr static float kLargeInc = 10.f;

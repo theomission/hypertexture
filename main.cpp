@@ -156,7 +156,7 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
 	std::make_shared<TweakColor>("lighting.suncolor", &g_sunColor, Color(1,1,1)),
 };
 
-void SaveCurrentCamera()
+static void SaveCurrentCamera()
 {
 	g_defaultEye = g_mainCamera->GetPos();
 	g_defaultFocus = g_mainCamera->GetPos() + g_mainCamera->GetViewframe().m_fwd;
@@ -186,12 +186,12 @@ static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Camera swap
-bool camera_GetDebugCamera()
+static bool camera_GetDebugCamera()
 {
 	return (g_curCamera == g_debugCamera);
 }
 
-void camera_SetDebugCamera(bool useDebug)
+static void camera_SetDebugCamera(bool useDebug)
 {
 	if(useDebug) {
 		g_curCamera = g_debugCamera;
@@ -555,7 +555,7 @@ static std::shared_ptr<SubmenuMenuItem>
 	return menu;
 }
 
-void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex, 
+static void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex, 
 	const std::shared_ptr<SubmenuMenuItem>& menu)
 {
 	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("outer radius", 
