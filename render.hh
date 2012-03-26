@@ -6,13 +6,12 @@
 #include <vector>
 
 class vec3;
-struct shaderinfo_t ;
 class Color;
 class Plane;
 class mat4;
-
-#define VTX_BUFFER 0
-#define IDX_BUFFER 1
+class Geom;
+class ShaderInfo;
+class CustomShaderAttr;
 
 // common attribute bindings
 enum GeomElType {
@@ -44,7 +43,22 @@ enum CommonBindingsType {
 	BIND_NUM,
 };
 
-class ShaderInfo;
+////////////////////////////////////////////////////////////////////////////////
+// function decls
+void render_Init();
+std::shared_ptr<Geom> render_GenerateSphereGeom(int subdivH, int subdivV);
+std::shared_ptr<Geom> render_GenerateBoxGeom();
+std::shared_ptr<Geom> render_GeneratePlaneGeom();
+void checkGlError(const char* str);
+// use these functions to add shader to a global list of shaders that can be recompiled.
+std::shared_ptr<ShaderInfo> render_CompileShader(const char* filename);
+std::shared_ptr<ShaderInfo> render_CompileShader(const char* filename, const std::vector<CustomShaderAttr>& customSpec);
+void render_RefreshShaders();
+void render_SetTextureParameters(int sWrap = GL_REPEAT, int tWrap = GL_REPEAT,
+	int magFilter = GL_LINEAR, int minFilter = GL_LINEAR_MIPMAP_LINEAR);
+void render_SaveScreen(const char* filename);
+void render_SaveTGA(const char* filename, int w, int h, unsigned char* bytes);
+void render_drawDebugTexture(GLuint dbgTex, bool splitChannels);
 
 ////////////////////////////////////////////////////////////////////////////////
 class GeomBindPair 
@@ -80,12 +94,6 @@ private:
 	int m_numIndices;
 	std::vector<GeomBindPair> m_elements;
 };
-
-std::shared_ptr<Geom> render_GenerateSphereGeom(int subdivH, int subdivV);
-std::shared_ptr<Geom> render_GenerateBoxGeom();
-std::shared_ptr<Geom> render_GeneratePlaneGeom();
-
-void checkGlError(const char* str);
 
 ////////////////////////////////////////////////////////////////////////////////
 class CustomShaderAttr
@@ -128,16 +136,6 @@ private:
 	void DeleteProgram();
 	const std::string m_filename;
 };
-
-// use these functions to add shader to a global list of shaders that can be recompiled.
-std::shared_ptr<ShaderInfo> render_CompileShader(const char* filename);
-std::shared_ptr<ShaderInfo> render_CompileShader(const char* filename, const std::vector<CustomShaderAttr>& customSpec);
-void render_RefreshShaders();
-
-void render_SetTextureParameters(int sWrap = GL_REPEAT, int tWrap = GL_REPEAT,
-	int magFilter = GL_LINEAR, int minFilter = GL_LINEAR_MIPMAP_LINEAR);
-void render_SaveScreen(const char* filename);
-void render_SaveTGA(const char* filename, int w, int h, unsigned char* bytes);
 
 ////////////////////////////////////////////////////////////////////////////////
 class ShaderParams

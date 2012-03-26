@@ -13,11 +13,43 @@
 #include "common.hh"
 #include "commonmath.hh"
 #include "vec.hh"
+#include "camera.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
-// File globals
+#define VTX_BUFFER 0
+#define IDX_BUFFER 1
+
+////////////////////////////////////////////////////////////////////////////////
+// File-scope globals
 static const char kVersion130[] = "#version 150\n";
 static std::vector<std::shared_ptr<ShaderInfo>> g_shaders;
+
+////////////////////////////////////////////////////////////////////////////////
+// shaders
+static std::shared_ptr<ShaderInfo> g_debugTexShader;
+enum DebugTexUniformLocType {
+	DTEXLOC_Tex1D,
+	DTEXLOC_Tex2D,
+	DTEXLOC_Channel,
+	DTEXLOC_Dims,
+	DTEXLOC_NUM,
+};
+
+static std::vector<CustomShaderAttr> g_debugTexUniformNames = 
+{
+	{ DTEXLOC_Tex1D, "colorTex1d" },
+	{ DTEXLOC_Tex2D, "colorTex2d" },
+	{ DTEXLOC_Channel, "channel" },
+	{ DTEXLOC_Dims, "dims"},
+};
+
+////////////////////////////////////////////////////////////////////////////////
+void render_Init()
+{
+	if(!g_debugTexShader)
+		g_debugTexShader = render_CompileShader("shaders/debugtex2d.glsl", g_debugTexUniformNames);
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 Geom::Geom(int numVerts, const float* verts, 
@@ -892,6 +924,81 @@ void render_SaveTGA(const char* filename, int w, int h, unsigned char* bytes)
 				(bytes[offset+2]);
 			out.write(reinterpret_cast<const char*>(&data), sizeof(data));
 		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void render_drawDebugTexture(GLuint dbgTex, bool splitChannels)
+{
+	if(dbgTex)
+	{	
+		GLint cur;
+		float x = 20, y = 20, w = 40, h = 350, scale = 1.f;
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_1D, dbgTex); 
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glGetIntegerv(GL_TEXTURE_BINDING_1D, &cur);
+		bool is2d = (GLuint)cur != dbgTex;
+		if(is2d)
+		{
+			(void)glGetError(); // clear the error so it doesn't spam
+			glBindTexture(GL_TEXTURE_1D, 0);
+			glBindTexture(GL_TEXTURE_2D, dbgTex);
+		}
+
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+		const ShaderInfo* shader = g_debugTexShader.get();
+		GLuint program = shader->m_program;
+		GLint posLoc = shader->m_attrs[GEOM_Pos];
+		GLint uvLoc = shader->m_attrs[GEOM_Uv];
+		GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
+		GLint tex1dLoc = shader->m_custom[DTEXLOC_Tex1D];
+		GLint tex2dLoc = shader->m_custom[DTEXLOC_Tex2D];
+		GLint channelLoc = shader->m_custom[DTEXLOC_Channel];
+		GLint dimsLoc = shader->m_custom[DTEXLOC_Dims];
+
+		glUseProgram(program);
+		glUniformMatrix4fv(mvpLoc, 1, 0, g_screen.m_proj.m);
+		glUniform1i(is2d ? tex2dLoc : tex1dLoc, 0);
+		glUniform1i(dimsLoc, is2d ? 2 : 1);
+
+		if(!is2d) h = 710;
+		int channel = splitChannels ? 0 : 4;
+		int channelMax = splitChannels ? 4 : 5;
+		for(; channel < channelMax; ++channel)
+		{
+			glUniform1i(channelLoc, channel);
+			if(!is2d) w = 40;
+			else w = 350;
+
+			if(!splitChannels) { if(is2d) { w = 710; } h = 710; }
+
+			glBegin(GL_TRIANGLE_STRIP);
+			glVertexAttrib2f(uvLoc, 0, 0); glVertexAttrib3f(posLoc, x,y,0.f);
+			glVertexAttrib2f(uvLoc, scale, 0); glVertexAttrib3f(posLoc, x+w,y,0.f);
+			glVertexAttrib2f(uvLoc, 0, scale); glVertexAttrib3f(posLoc, x,y+h,0.f);
+			glVertexAttrib2f(uvLoc, scale, scale); glVertexAttrib3f(posLoc, x+w,y+h,0.f);
+			glEnd();
+
+			if(!is2d)
+			{
+				x = x+w+10;
+			}
+			else
+			{
+				if((channel & 1) == 0)
+				{
+					x = x + w + 10;
+				}
+				else
+				{
+					x = 20;
+					y = y + h + 10;
+				}
+			}
+		}
+		checkGlError("debug draw texture");
 	}
 }
 

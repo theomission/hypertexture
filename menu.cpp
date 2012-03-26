@@ -11,11 +11,6 @@
 #include "camera.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
-// screen width and height
-extern Screen g_screen;
-extern std::shared_ptr<Camera> g_curCamera;
-
-////////////////////////////////////////////////////////////////////////////////
 static std::shared_ptr<TopMenuItem> g_top;
 static std::vector<std::shared_ptr<MenuItem>> g_itemStack;
 static std::vector<std::shared_ptr<MenuItem>> g_updating;
@@ -283,7 +278,7 @@ void SubmenuMenuItem::OnActivate()
 	}
 }
 
-void SubmenuMenuItem::Render()
+void SubmenuMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(m_x, m_y, m_w, m_h, 1.f);
 
@@ -304,7 +299,7 @@ void SubmenuMenuItem::Render()
 
 	for(auto child: m_children)
 		if(child->HasFlag(MENUSTATE_Active))
-			child->Render();
+			child->Render(curCamera);
 }
 
 bool SubmenuMenuItem::OnKey(int key, int mod)
@@ -422,7 +417,7 @@ void TopMenuItem::OnActivate()
 	}
 }
 
-void TopMenuItem::Render()
+void TopMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(0.f, 0.f, m_w, m_h, 1.f);
 	float x =  kHSpace; 
@@ -441,7 +436,7 @@ void TopMenuItem::Render()
 
 	for(auto child: GetChildren())
 		if(child->HasFlag(MENUSTATE_Active))
-			child->Render();
+			child->Render(curCamera);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -487,7 +482,7 @@ void IntSliderMenuItem::UpdateData()
 	m_h = h;
 }
 
-void IntSliderMenuItem::Render()
+void IntSliderMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(m_x, m_y, m_w, m_h, 1.f);
 	font_Print(m_x + kHSpace, m_y + m_h - kVSpace, m_str.c_str(), kColWhite, kFontSize);
@@ -557,7 +552,7 @@ void FloatSliderMenuItem::UpdateData()
 	m_h = h;
 }
 
-void FloatSliderMenuItem::Render()
+void FloatSliderMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(m_x, m_y, m_w, m_h, 1.f);
 	font_Print(m_x + kHSpace, m_y + m_h - kVSpace, m_str.c_str(), kColWhite, kFontSize);
@@ -639,7 +634,7 @@ void ColorSliderMenuItem::UpdateData()
 	}
 }
 
-void ColorSliderMenuItem::Render()
+void ColorSliderMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(m_x, m_y, m_w, m_h, 1.f);
 
@@ -747,7 +742,8 @@ VecSliderMenuItem::VecSliderMenuItem(const std::string& name, vec3* val,
 	UpdateData();
 }
 	
-void VecSliderMenuItem::DrawNormalVecView(float x, float y, float w, float h, const vec3& normal)
+void VecSliderMenuItem::DrawNormalVecView(const Camera& curCamera, 
+	float x, float y, float w, float h, const vec3& normal)
 {
 	GLint mvpLoc = g_normalViewShader->m_uniforms[BIND_Mvp];
 	GLint colorLoc = g_normalViewShader->m_attrs[GEOM_Color];
@@ -761,9 +757,8 @@ void VecSliderMenuItem::DrawNormalVecView(float x, float y, float w, float h, co
 	glClearColor(0.05f,0.05f,0.05f,1.f);
 	glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT);
 
-	Camera localcamera = *g_curCamera;
-	// TODO this is kinda hacky
-	localcamera.SetPos(-4.f * g_curCamera->GetViewframe().m_fwd);
+	Camera localcamera = curCamera;
+	localcamera.SetPos(-4.f * curCamera.GetViewframe().m_fwd);
 	localcamera.Compute();
 	mat4 proj = Compute3DProj(30.f, w/h, 0.1, 5);
 	mat4 mvp = proj * localcamera.GetView();
@@ -866,13 +861,13 @@ void VecSliderMenuItem::UpdateData()
 	}
 }
 
-void VecSliderMenuItem::Render()
+void VecSliderMenuItem::Render(const Camera& curCamera)
 {
 	menu_DrawQuad(m_x, m_y, m_w, m_h, 1.f);
 	vec3 val = m_get();
 	vec3 nval = Normalize(val);
 
-	DrawNormalVecView(m_x+1.f, m_y+1.f, kDisplaySize-2.f, kDisplaySize-2.f, nval);
+	DrawNormalVecView(curCamera, m_x+1.f, m_y+1.f, kDisplaySize-2.f, kDisplaySize-2.f, nval);
 	float x = m_x + kHSpace;
 	float y = m_y + kDisplaySize + kVSpace;
 
@@ -1015,9 +1010,9 @@ void menu_Update(float dt)
 	g_updating.erase(newEnd, g_updating.end());
 }
 
-void menu_Draw()
+void menu_Draw(const Camera& curCamera)
 {
-	if(g_top) g_top->Render();
+	if(g_top) g_top->Render(curCamera);
 }
 
 static void menu_ActivateMenuItem(const std::shared_ptr<MenuItem>& item)

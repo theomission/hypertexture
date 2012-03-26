@@ -107,17 +107,11 @@ void Worker::OnJoin()
 		m_task.reset();
 	}
 }
-////////////////////////////////////////////////////////////////////////////////
-// Extern globals
-extern Screen g_screen;
-
-////////////////////////////////////////////////////////////////////////////////
-// Globals
-std::vector<std::shared_ptr<Worker>> g_workers;
-std::deque<std::shared_ptr<Task>> g_taskQueue;
 
 ////////////////////////////////////////////////////////////////////////////////
 // File-scope globals
+static std::vector<std::shared_ptr<Worker>> g_workers;
+static std::deque<std::shared_ptr<Task>> g_taskQueue;
 static int g_curTotalJobs;
 static int g_curCompletedJobs;
 

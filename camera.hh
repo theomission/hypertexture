@@ -21,6 +21,8 @@ public:
 	mat4 m_proj;
 };
 
+extern Screen g_screen;
+
 class Viewframe
 {
 public:

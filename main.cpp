@@ -27,13 +27,9 @@
 #include "timer.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
-// globals
-
-Screen g_screen(1024, 768);
-std::shared_ptr<Camera> g_curCamera;
-
-////////////////////////////////////////////////////////////////////////////////
 // Types
+
+// just a collection of stuff needed to control and render a GpuHypertexture
 class AnimatedHypertexture
 {
 public:
@@ -43,46 +39,58 @@ public:
 	std::shared_ptr<ShaderParams> m_params;
 	float m_time;
 	float m_lastUpdateTime;
+
+	// other variables for shaders that are specific to the shader
 	float m_radius;
 	float m_innerRadius;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 // file scope globals
-static vec3 g_focus, g_defaultFocus, g_defaultEye, g_defaultUp;
-static std::shared_ptr<Camera> g_mainCamera;
+
+// cameras
+static std::shared_ptr<Camera> g_curCamera;
+static std::shared_ptr<Camera> g_mainCamera;	
 static std::shared_ptr<Camera> g_debugCamera;
 
-static int g_menuEnabled = 0;
-static int g_wireframe = 0;
-static int g_debugDisplay = 0;
+// main camera variables, used for saving/loading the camera
+static vec3 g_focus, g_defaultFocus, g_defaultEye, g_defaultUp;
+
+// display toggles
+static int g_menuEnabled;
+static int g_wireframe;
+static int g_debugDisplay;
+
+// orbit cam
 static bool g_orbitCam = false;
-static float g_orbitAngle = 0.f;
+static float g_orbitAngle;
 static vec3 g_orbitFocus;
 static vec3 g_orbitStart;
 static float g_orbitRate;
 static float g_orbitLength;
 
-static float g_fpsDisplay = 0.f;
+// debug cam
 static vec3 g_fakeFocus = {-10.f, 0.f, 0.f};
-static Viewframe g_debugViewframe;
 
+// fps tracking
+static float g_fpsDisplay;
 static int g_frameCount;
 static int g_frameSampleCount;
 static Timer g_frameTimer;
 
+// dt tracking
 static float g_dt;
 static Clock g_timer;
 
-static std::shared_ptr<AnimatedHypertexture> g_curHtex;;
-static std::shared_ptr<SubmenuMenuItem> g_shapesMenu;
-
+// lighting
 static Color g_sunColor;
 static vec3 g_sundir;
 
+// control vars for debug texture render
 static GLuint g_debugTexture;
-static int g_debugTextureSplit;
+static bool g_debugTextureSplit;
 
+// screenshots & recording
 static bool g_screenshotRequested = false;
 static bool g_recording = false;
 static int g_recordFps = 30;
@@ -90,9 +98,17 @@ static int g_recordCurFrame;
 static int g_recordFrameCount = 300;
 static Limits<float> g_recordTimeRange;
 
-////////////////////////////////////////////////////////////////////////////////
+// demo specific stuff:
+
+// The current hypertexture we're rendering, and a global shapes menu for adding new shapes.
+static std::shared_ptr<AnimatedHypertexture> g_curHtex;
+static std::shared_ptr<SubmenuMenuItem> g_shapesMenu;
+
+// geom
 static std::shared_ptr<Geom> g_groundGeom;
 
+////////////////////////////////////////////////////////////////////////////////
+// Shaders
 static std::shared_ptr<ShaderInfo> g_groundShader;
 
 enum GroundUniformLocType {
@@ -104,23 +120,6 @@ static std::vector<CustomShaderAttr> g_groundUniforms =
 {
 	{ GRNDBIND_ShadowMatrix, "matShadow" },
 	{ GRNDBIND_ShadowMap, "shadowMap" },
-};
-
-static std::shared_ptr<ShaderInfo> g_debugTexShader;
-enum DebugTexUniformLocType {
-	DTEXLOC_Tex1D,
-	DTEXLOC_Tex2D,
-	DTEXLOC_Channel,
-	DTEXLOC_Dims,
-	DTEXLOC_NUM,
-};
-
-static std::vector<CustomShaderAttr> g_debugTexUniformNames = 
-{
-	{ DTEXLOC_Tex1D, "colorTex1d" },
-	{ DTEXLOC_Tex2D, "colorTex2d" },
-	{ DTEXLOC_Channel, "channel" },
-	{ DTEXLOC_Dims, "dims"},
 };
 
 enum AnimatedHtexBindType {
@@ -142,7 +141,7 @@ static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
 static void record_Start();
 
 ////////////////////////////////////////////////////////////////////////////////
-// tweak vars
+// tweak vars - these are checked into git
 extern float g_tileDrawErrorThreshold;
 static std::vector<std::shared_ptr<TweakVarBase>> g_tweakVars = {
 	std::make_shared<TweakVector>("cam.eye", &g_defaultEye, vec3(8.f, 0.f, 2.f)),
@@ -164,7 +163,7 @@ static void SaveCurrentCamera()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Settings vars
+// Settings vars - don't get checked in to git
 static std::vector<std::shared_ptr<TweakVarBase>> g_settingsVars = {
 	std::make_shared<TweakBool>("cam.orbit", &g_orbitCam, false),
 	std::make_shared<TweakBool>("debug.wireframe", &g_wireframe, false),
@@ -287,80 +286,6 @@ static void record_Advance()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-static void drawDebugTexture(void)
-{
-	if(g_debugTexture)
-	{	
-		GLint cur;
-		float x = 20, y = 20, w = 40, h = 350, scale = 1.f;
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_1D, g_debugTexture); 
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glGetIntegerv(GL_TEXTURE_BINDING_1D, &cur);
-		bool is2d = (GLuint)cur != g_debugTexture;
-		if(is2d)
-		{
-			(void)glGetError(); // clear the error so it doesn't spam
-			glBindTexture(GL_TEXTURE_1D, 0);
-			glBindTexture(GL_TEXTURE_2D, g_debugTexture);
-		}
-
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-		const ShaderInfo* shader = g_debugTexShader.get();
-		GLuint program = shader->m_program;
-		GLint posLoc = shader->m_attrs[GEOM_Pos];
-		GLint uvLoc = shader->m_attrs[GEOM_Uv];
-		GLint mvpLoc = shader->m_uniforms[BIND_Mvp];
-		GLint tex1dLoc = shader->m_custom[DTEXLOC_Tex1D];
-		GLint tex2dLoc = shader->m_custom[DTEXLOC_Tex2D];
-		GLint channelLoc = shader->m_custom[DTEXLOC_Channel];
-		GLint dimsLoc = shader->m_custom[DTEXLOC_Dims];
-
-		glUseProgram(program);
-		glUniformMatrix4fv(mvpLoc, 1, 0, g_screen.m_proj.m);
-		glUniform1i(is2d ? tex2dLoc : tex1dLoc, 0);
-		glUniform1i(dimsLoc, is2d ? 2 : 1);
-
-		if(!is2d) h = 710;
-		int channel = g_debugTextureSplit ? 0 : 4;
-		int channelMax = g_debugTextureSplit ? 4 : 5;
-		for(; channel < channelMax; ++channel)
-		{
-			glUniform1i(channelLoc, channel);
-			if(!is2d) w = 40;
-			else w = 350;
-
-			if(!g_debugTextureSplit) { if(is2d) { w = 710; } h = 710; }
-
-			glBegin(GL_TRIANGLE_STRIP);
-			glVertexAttrib2f(uvLoc, 0, 0); glVertexAttrib3f(posLoc, x,y,0.f);
-			glVertexAttrib2f(uvLoc, scale, 0); glVertexAttrib3f(posLoc, x+w,y,0.f);
-			glVertexAttrib2f(uvLoc, 0, scale); glVertexAttrib3f(posLoc, x,y+h,0.f);
-			glVertexAttrib2f(uvLoc, scale, scale); glVertexAttrib3f(posLoc, x+w,y+h,0.f);
-			glEnd();
-
-			if(!is2d)
-			{
-				x = x+w+10;
-			}
-			else
-			{
-				if((channel & 1) == 0)
-				{
-					x = x + w + 10;
-				}
-				else
-				{
-					x = 20;
-					y = y + h + 10;
-				}
-			}
-		}
-		checkGlError("debug draw texture");
-	}
-}
-
 static void drawGround(const vec3& sundir)
 {
 	mat4 projview = g_curCamera->GetProj() * g_curCamera->GetView();
@@ -444,10 +369,10 @@ static void draw(Framedata& frame)
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_DEPTH_TEST);
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-	drawDebugTexture();
+	render_drawDebugTexture(g_debugTexture, g_debugTextureSplit);
 
 	if(g_menuEnabled)
-		menu_Draw();
+		menu_Draw(*g_curCamera);
 
 	checkGlError("draw(): post menu");
 
@@ -477,12 +402,7 @@ static void draw(Framedata& frame)
 	
 }
 
-static void InitializeShaders()
-{
-	g_debugTexShader = render_CompileShader("shaders/debugtex2d.glsl", g_debugTexUniformNames);
-	checkGlError("InitializeShaders");
-}
-
+////////////////////////////////////////////////////////////////////////////////
 AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
 	: m_time(0.f)
 	, m_lastUpdateTime(0.f)
@@ -596,14 +516,14 @@ static void createGpuHypertextures()
 	htex->m_gpuhtex->SetAbsorption(0.9);
 	g_shapesMenu->AppendChild(menu);
 
-	////////////////////////////////////////////////////////////////////////////////	
 }
 
+////////////////////////////////////////////////////////////////////////////////	
 static void initialize()
 {
 	task_Startup(3);
 	dbgdraw_Init();
-	InitializeShaders();
+	render_Init();
 	framemem_Init();
 	font_Init();
 	menu_SetTop(MakeMenu());
@@ -624,6 +544,7 @@ static void initialize()
 	createGpuHypertextures();
 }
 
+////////////////////////////////////////////////////////////////////////////////
 static void orbitcam_Update()
 {
 	if(!g_orbitCam) return;
@@ -641,6 +562,7 @@ static void orbitcam_Update()
 	g_orbitAngle = AngleWrap(g_orbitAngle);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 static void update(Framedata& frame)
 {
 	if(!g_recording)
@@ -685,6 +607,7 @@ static void update(Framedata& frame)
 	task_Update();
 }
 
+////////////////////////////////////////////////////////////////////////////////
 enum CameraDirType {
 	CAMDIR_FWD, 
 	CAMDIR_BACK,
@@ -710,6 +633,7 @@ static void move_camera(int dir)
 	g_curCamera->MoveBy(off);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 static void resize(int w, int h)
 {
 	g_screen.Resize(w,h);
@@ -720,6 +644,7 @@ static void resize(int w, int h)
 	glViewport(0,0,w,h);
 }
 
+////////////////////////////////////////////////////////////////////////////////
 int main(void)
 {
 	SDL_Event event;
@@ -780,7 +705,7 @@ int main(void)
 										--g_debugTexture;
 									break;
 								case SDLK_KP_ENTER:
-									g_debugTextureSplit = 1 ^ g_debugTextureSplit;
+									g_debugTextureSplit = !g_debugTextureSplit;
 									break;
 								case SDLK_PAGEUP:
 									{
