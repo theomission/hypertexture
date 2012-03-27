@@ -23,27 +23,9 @@
 #include "task.hh"
 #include "ui.hh"
 #include "gputask.hh"
-#include "hyper.hh"
 #include "timer.hh"
-
-////////////////////////////////////////////////////////////////////////////////
-// Types
-
-// just a collection of stuff needed to control and render a GpuHypertexture
-class AnimatedHypertexture
-{
-public:
-	AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo> &shader);
-	std::shared_ptr<GpuHypertexture> m_gpuhtex;
-	std::shared_ptr<ShaderInfo> m_shader;
-	std::shared_ptr<ShaderParams> m_params;
-	float m_time;
-	float m_lastUpdateTime;
-
-	// other variables for shaders that are specific to the shader
-	float m_radius;
-	float m_innerRadius;
-};
+#include "hyper.hh"
+#include "htexdb.hh"
 
 ////////////////////////////////////////////////////////////////////////////////
 // file scope globals
@@ -104,7 +86,10 @@ static Limits<float> g_recordTimeRange;
 static std::shared_ptr<AnimatedHypertexture> g_curHtex;
 static std::shared_ptr<SubmenuMenuItem> g_shapesMenu;
 
-// geom
+// list of all hypertextures
+static std::vector<std::shared_ptr<AnimatedHypertexture>> g_htexList;
+
+// geom for the ground (just a plane)
 static std::shared_ptr<Geom> g_groundGeom;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -120,20 +105,6 @@ static std::vector<CustomShaderAttr> g_groundUniforms =
 {
 	{ GRNDBIND_ShadowMatrix, "matShadow" },
 	{ GRNDBIND_ShadowMap, "shadowMap" },
-};
-
-enum AnimatedHtexBindType {
-	HTEXBIND_Time,
-	HTEXBIND_Radius,
-	HTEXBIND_InnerRadius,
-	HTEXBIND_Absorption,
-};
-
-static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
-{
-	{ HTEXBIND_Time, "time" },
-	{ HTEXBIND_Radius, "radius", true },
-	{ HTEXBIND_InnerRadius, "innerRadius", true },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -403,119 +374,43 @@ static void draw(Framedata& frame)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-AnimatedHypertexture::AnimatedHypertexture(int numCells, const std::shared_ptr<ShaderInfo>& shader)
-	: m_time(0.f)
-	, m_lastUpdateTime(0.f)
-	, m_radius(0.3f)
-	, m_innerRadius(0.2f)
-{	
-	m_shader = shader;
-	m_params = std::make_shared<ShaderParams>(shader);
-	m_params->AddParam("time", ShaderParams::P_Float1, &m_time);
-	m_params->AddParam("radius", ShaderParams::P_Float1, &m_radius);
-	m_params->AddParam("innerRadius", ShaderParams::P_Float1, &m_innerRadius);
-	m_gpuhtex = std::make_shared<GpuHypertexture>(numCells, shader, vec3(100.0), m_params);
-	m_gpuhtex->Update(Normalize(g_sundir));
-}
-
-static std::shared_ptr<SubmenuMenuItem> 
-	createDefaultHypertextureMenu(const char* name, const std::shared_ptr<AnimatedHypertexture>& htex)
-{
-	auto menu = std::make_shared<SubmenuMenuItem>(name, 
-		SubmenuMenuItem::ChildListType{
-			std::make_shared<ButtonMenuItem>("activate", 
-				[=, &g_curHtex](){ g_curHtex = htex; }),
-			std::make_shared<ButtonMenuItem>("reload shader",
-				[=](){
-					htex->m_shader->Recompile();
-					htex->m_gpuhtex->Update(Normalize(g_sundir));
-				}),
-			std::make_shared<ButtonMenuItem>("reset time", 
-				[=](){ 
-					htex->m_time = 0.f; 
-					htex->m_lastUpdateTime = 0.f; 
-				}),
-			std::make_shared<FloatSliderMenuItem>("time slider",
-				[=]() { return htex->m_time;  },
-				[=, &g_curHtex](float time) { 
-					htex->m_time = time; 
-				}),
-			std::make_shared<FloatSliderMenuItem>("absorption",
-				[=]() { return htex->m_gpuhtex->GetAbsorption(); },
-				[=, &g_curHtex](float a) {
-					htex->m_gpuhtex->SetAbsorption(a);
-				}, 0.1f),
-			std::make_shared<FloatSliderMenuItem>("g",
-				[=]() { return htex->m_gpuhtex->GetPhaseConstant(); },
-				[=, &g_curHtex](float g) {
-					htex->m_gpuhtex->SetPhaseConstant(g);
-				}, 0.1f, Limits<float>{-1.f, 1.f}),
-			std::make_shared<ColorSliderMenuItem>("color",
-				[=]() { return htex->m_gpuhtex->GetColor(); },
-				[=, &g_curHtex](const Color& c) {
-					htex->m_gpuhtex->SetColor(c);
-				}),
-			std::make_shared<FloatSliderMenuItem>("density multiplier",
-				[=]() { return htex->m_gpuhtex->GetDensityMultiplier(); },
-				[=, &g_curHtex](float f) {
-					htex->m_gpuhtex->SetDensityMultiplier(f);
-				}),
-			std::make_shared<ColorSliderMenuItem>("absorption color",
-				[=]() { return htex->m_gpuhtex->GetAbsorptionColor(); },
-				[=, &g_curHtex](const Color& c) {
-					htex->m_gpuhtex->SetAbsorptionColor(c);
-				}),
-			std::make_shared<ColorSliderMenuItem>("scattering color",
-				[=]() { return htex->m_gpuhtex->GetScatteringColor(); },
-				[=, &g_curHtex](const Color& c) {
-					htex->m_gpuhtex->SetScatteringColor(c);
-				}),
-		}
-	);
-	return menu;
-}
-
-static void addSphereNoiseMenuItems(const std::shared_ptr<AnimatedHypertexture>& htex, 
-	const std::shared_ptr<SubmenuMenuItem>& menu)
-{
-	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("outer radius", 
-		[=]() { return htex->m_radius; },
-		[=](float r) { htex->m_radius = r; }, 0.1f));
-	menu->AppendChild( std::make_shared<FloatSliderMenuItem>("inner radius", 
-		[=]() { return htex->m_innerRadius; },
-		[=](float r) { htex->m_innerRadius = r; }, 0.1f));
-}
-
 static void createGpuHypertextures()
 {
-	////////////////////////////////////////////////////////////////////////////////	
-	// Sphere noise 
-	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", [&g_curHtex]() {
-		if(g_curHtex) g_curHtex->m_gpuhtex->Update(Normalize(g_sundir)); }));
-
-	auto shader = render_CompileShader("shaders/gen/spherenoise.glsl", g_animatedHtexUniforms);
-	auto htex = std::make_shared<AnimatedHypertexture>(64, shader);
-	auto menu = createDefaultHypertextureMenu("sphere noise 64", htex);
-	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 2.f;
-	htex->m_gpuhtex->SetAbsorption(0.9);
-	g_shapesMenu->AppendChild(menu);
-	g_curHtex = htex;
+	g_htexList = ParseHtexFile("volumes.txt");
 	
-	htex = std::make_shared<AnimatedHypertexture>(128, htex->m_shader);
-	menu = createDefaultHypertextureMenu("sphere noise 128", htex);
-	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 2.f;
-	htex->m_gpuhtex->SetAbsorption(0.9);
-	g_shapesMenu->AppendChild(menu);
-	
-	htex = std::make_shared<AnimatedHypertexture>(256, htex->m_shader);
-	menu = createDefaultHypertextureMenu("sphere noise 256", htex);
-	addSphereNoiseMenuItems(htex, menu);
-	htex->m_time = 2.f;
-	htex->m_gpuhtex->SetAbsorption(0.9);
-	g_shapesMenu->AppendChild(menu);
+	// start the menu with an update button
+	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("update current", 
+		[&g_curHtex]() 
+		{
+			if(g_curHtex) 
+				g_curHtex->Update(Normalize(g_sundir)); 
+		}));
 
+	g_shapesMenu->AppendChild(std::make_shared<ButtonMenuItem>("save all",
+		[]() { SaveHtexFile("volumes.txt", g_htexList); }));
+
+	if(!g_htexList.empty())
+	{
+		g_curHtex = g_htexList[0];
+		g_curHtex->Create();
+		g_curHtex->Update(Normalize(g_sundir));
+	}
+
+	for(auto htex: g_htexList)
+	{
+		auto htexMenu = htex->CreateMenu();
+		htexMenu->InsertChild(0,
+			std::make_shared<ButtonMenuItem>("activate", 
+				[htex, &g_curHtex]() { 
+					if(g_curHtex) {
+						g_curHtex->Destroy();
+					}
+					g_curHtex = htex; 
+					g_curHtex->Create();
+					g_curHtex->Update(Normalize(g_sundir));
+				}));
+		g_shapesMenu->AppendChild(htexMenu);
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////	
@@ -524,11 +419,13 @@ static void initialize()
 	task_Startup(3);
 	dbgdraw_Init();
 	render_Init();
-	framemem_Init();
+	framemem_Init(); 
 	font_Init();
 	menu_SetTop(MakeMenu());
 	ui_Init();
 	hyper_Init();
+	htexdb_Init();
+
 	g_groundGeom = render_GeneratePlaneGeom();
 	g_groundShader = render_CompileShader("shaders/ground.glsl", g_groundUniforms);
 
@@ -562,6 +459,22 @@ static void orbitcam_Update()
 	g_orbitAngle = AngleWrap(g_orbitAngle);
 }
 
+static void updateFps()
+{
+	int numFrames = g_frameCount - g_frameSampleCount;
+	if(numFrames >= 30 * 5)
+	{
+		g_frameTimer.Stop();
+		
+		float delta = g_frameTimer.GetTime();
+		float fps = (numFrames) / delta;
+		g_frameSampleCount = g_frameCount;
+		g_fpsDisplay = fps;
+
+		g_frameTimer.Start();
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 static void update(Framedata& frame)
 {
@@ -577,25 +490,14 @@ static void update(Framedata& frame)
 		{
 			float time = g_recordTimeRange.Interpolate(g_recordCurFrame / (float)g_recordFrameCount);
 			g_curHtex->m_time = time;
-			g_curHtex->m_gpuhtex->Update(Normalize(g_sundir));
+			g_curHtex->Update(Normalize(g_sundir));
 		}
 		g_dt = 1.0 / g_recordFps;
 	}
 
 	orbitcam_Update();
 
-	int numFrames = g_frameCount - g_frameSampleCount;
-	if(numFrames >= 30 * 5)
-	{
-		g_frameTimer.Stop();
-		
-		float delta = g_frameTimer.GetTime();
-		float fps = (numFrames) / delta;
-		g_frameSampleCount = g_frameCount;
-		g_fpsDisplay = fps;
-
-		g_frameTimer.Start();
-	}
+	updateFps();
 
 	g_curCamera->Compute();
 
@@ -820,7 +722,7 @@ int main(void)
 					g_curHtex->m_time -= g_dt;
 
 				if(prevtime != g_curHtex->m_time) {
-					g_curHtex->m_gpuhtex->Update(Normalize(g_sundir));
+					g_curHtex->Update(Normalize(g_sundir));
 				}
 			}
 		}
@@ -842,8 +744,7 @@ int main(void)
 			{
 				int mods = SDL_GetModState();
 				const Uint8* keystate = SDL_GetKeyState(NULL);
-				int i;
-				for(i = 0; i < SDLK_LAST; ++i)
+				for(int i = 0; i < SDLK_LAST; ++i)
 				{
 					if(keystate[i])
 						menu_Key(i, mods);

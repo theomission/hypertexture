@@ -125,3 +125,9 @@ inline float Floor(float val) {
 		return fval == val ? val : fval - 1;
 	}
 }
+
+inline bool IsPower2(unsigned int value)
+{
+	return (value & (value-1)) == 0;
+}
+

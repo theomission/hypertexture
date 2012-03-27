@@ -92,6 +92,7 @@ public:
 	bool OnKey(int key, int mod) ;
 	void OnActivate();
 
+	void InsertChild(int index, const std::shared_ptr<MenuItem>& item);
 	void AppendChild(const std::shared_ptr<MenuItem>& item);
 
 	const std::vector<std::shared_ptr<MenuItem>>& GetChildren() const { return m_children; }

@@ -241,6 +241,11 @@ SubmenuMenuItem::SubmenuMenuItem(const std::string& name,
 	m_children.swap(children);
 }
 
+void SubmenuMenuItem::InsertChild(int index, const std::shared_ptr<MenuItem>& item)
+{
+	m_children.insert(m_children.begin() + index, item);
+}
+
 void SubmenuMenuItem::AppendChild(const std::shared_ptr<MenuItem>& item)
 {
 	m_children.push_back(item);

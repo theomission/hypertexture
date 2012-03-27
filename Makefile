@@ -49,8 +49,9 @@ OBJECTS := \
 	$(OBJDIR)/gputask.o \
 	$(OBJDIR)/poolmem.o \
 	$(OBJDIR)/ui.o \
-	$(OBJDIR)/hyper.o \
 	$(OBJDIR)/timer.o \
+	$(OBJDIR)/hyper.o \
+	$(OBJDIR)/htexdb.o \
 
 .PHONY: clean strip
 
@@ -131,6 +132,9 @@ $(OBJDIR)/hyper.o: hyper.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 $(OBJDIR)/timer.o: timer.cpp
+	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
+
+$(OBJDIR)/htexdb.o: htexdb.cpp
 	$(COMPILE) $(CPPFLAGS) -o "$@" -c "$<"
 
 -include $(OBJECTS:%.o=%.d)

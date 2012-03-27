@@ -162,6 +162,13 @@ bool TokParser::ExpectTok(const char* str)
 		m_error = true;
 	return result;
 }
+	
+bool TokParser::IsTok(const char* str)
+{
+	if(m_eof) { return false; }
+	bool result = strcmp(str, m_token) == 0;
+	return result;
+}
 
 bool TokParser::Ok() const
 {

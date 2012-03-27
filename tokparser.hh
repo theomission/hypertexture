@@ -36,6 +36,7 @@ public:
 	float GetFloat();
 	int GetFlag(const std::vector<TokFlagDef>& flagdef);
 	bool ExpectTok(const char* str); 
+	bool IsTok(const char* str); 
 
 private:
 	void Consume();
