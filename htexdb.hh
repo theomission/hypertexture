@@ -28,6 +28,7 @@ public:
 	// true if a GpuHypertexture can be created with the creation data
 	bool Valid() const;
 
+	void UpdateVariables();
 	void Update(const vec3& sundir);
 
 	////////////////////////////////////////////////////////////////////////////////	

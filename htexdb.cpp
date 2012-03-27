@@ -74,16 +74,21 @@ bool AnimatedHypertexture::Valid() const
 		m_shader ;
 }
 	
-void AnimatedHypertexture::Update(const vec3& sundir)
-{	
+void AnimatedHypertexture::UpdateVariables()
+{
+	if(!m_gpuhtex) return;
 	// keep the saved values in sync with the actual object
-	// TODO: it would probably make more sense to just use a ShaderParams object here
 	m_gpuhtex->SetAbsorption(m_absorption);
 	m_gpuhtex->SetPhaseConstant(m_g);
 	m_gpuhtex->SetColor(m_color);
 	m_gpuhtex->SetDensityMultiplier(m_densityMult);
 	m_gpuhtex->SetScatteringColor(m_scatterColor);
 	m_gpuhtex->SetAbsorptionColor(m_absorbColor);
+}
+
+void AnimatedHypertexture::Update(const vec3& sundir)
+{
+	UpdateVariables();
 	m_gpuhtex->Update(sundir);
 }
 
@@ -99,12 +104,24 @@ std::shared_ptr<SubmenuMenuItem> AnimatedHypertexture::CreateMenu()
 					m_lastUpdateTime = 0.f; 
 				}),
 			std::make_shared<FloatSliderMenuItem>("time slider", &m_time),
-			std::make_shared<FloatSliderMenuItem>("absorption", &m_absorption, 0.1f),
-			std::make_shared<FloatSliderMenuItem>("g", &m_g, 0.1f, Limits<float>{-1.f, 1.f}),
-			std::make_shared<ColorSliderMenuItem>("color", &m_color),
-			std::make_shared<FloatSliderMenuItem>("density multiplier", &m_densityMult),
-			std::make_shared<ColorSliderMenuItem>("absorption color", &m_absorbColor),
-			std::make_shared<ColorSliderMenuItem>("scattering color", &m_scatterColor),
+			std::make_shared<FloatSliderMenuItem>("absorption", 
+				[this]() { return m_absorption; },
+				[this](float v) { m_absorption = v; UpdateVariables(); }, 0.1f),
+			std::make_shared<FloatSliderMenuItem>("g", 
+				[this]() { return m_g; },
+				[this](float v) { m_g = v; UpdateVariables(); }, 0.1f, Limits<float>{-1.f, 1.f}),
+			std::make_shared<ColorSliderMenuItem>("color", 
+				[this]() { return m_color; },
+				[this](const Color& c) { m_color = c; UpdateVariables(); }),
+			std::make_shared<FloatSliderMenuItem>("density multiplier", 
+				[this]() { return m_densityMult; },
+				[this](float v) { m_densityMult = v; UpdateVariables(); }),
+			std::make_shared<ColorSliderMenuItem>("absorption color", 
+				[this]() { return m_absorbColor; },
+				[this](const Color& c) { m_absorbColor = c; UpdateVariables(); }),
+			std::make_shared<ColorSliderMenuItem>("scattering color", 
+				[this]() { return m_scatterColor; },
+				[this](const Color& c) { m_scatterColor = c; }),
 		});
 
 	if(m_shader == g_sphereNoiseShader)

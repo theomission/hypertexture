@@ -2,7 +2,7 @@
 "name" = "sphere noise 64"
 "shader" = "spherenoise"
 "dim" = 64
-"time" = 1 : 3f800000
+"time" = 0.910377 : 3f690e77
 "absorption" = 0.6 : 3f19999a
 "g" = -0.1 : bdcccccd
 "color" = 0.9 : 3f666666 0.95 : 3f733333 0.95 : 3f733333
@@ -16,13 +16,13 @@
 "name" = "sphere noise 128"
 "shader" = "spherenoise"
 "dim" = 128
-"time" = 1 : 3f800000
+"time" = 1.14761 : 3f92e4f6
 "absorption" = 0.6 : 3f19999a
 "g" = -0.1 : bdcccccd
-"color" = 0.9 : 3f666666 0.95 : 3f733333 0.95 : 3f733333
-"densityMult" = 17 : 41880000
-"scatterColor" = 0.75 : 3f400000 0.9 : 3f666666 0.9 : 3f666666
-"absorbColor" = 0.85 : 3f59999a 0.95 : 3f733333 0.95 : 3f733333
+"color" = 0.8 : 3f4ccccc 0.85 : 3f599999 0.85 : 3f599999
+"densityMult" = 12 : 41400000
+"scatterColor" = 0.7 : 3f333333 0.75 : 3f3fffff 0.75 : 3f400002
+"absorbColor" = 0.7 : 3f333333 0.75 : 3f3fffff 0.95 : 3f733333
 "radius" = 0.32 : 3ea3d70a
 "innerRadius" = 0.05 : 3d4ccccd
 }
