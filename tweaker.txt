@@ -3,7 +3,7 @@
 "cam.up" = 0.111452 : 3de440bd -0.224058 : be656f88 0.968182 : 3f77dac7
 "cam.orbitFocus" = 0 : 0 0 : 0 0 : 0
 "cam.orbitStart" = 138.299 : 430a4c8d -77.0309 : c29a0fd2 40.9172 : 4223ab30
-"cam.orbitRate" = 0.0174531 : 3c8ef9e8
+"cam.orbitRate" = 0.0174532 : 3c8efa00
 "cam.orbitLength" = 619.1 : 441ac666
 "lighting.sundir" = 0.842214 : 3f579b53 0.109994 : 3de144c2 0.527771 : 3f071c07
 "lighting.suncolor" = 0.95 : 3f733333 0.9 : 3f666666 0.85 : 3f599999

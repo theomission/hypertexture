@@ -27,7 +27,8 @@ float density(vec3 pt)
 
 	float density = max(0, outerDensity - innerDensity);
 
-	return smoothstep(0,0.1,density);
+//	return smoothstep(0,0.1,density);
+	return density;
 }
 
 #include "shaders/gen/common.glsl"

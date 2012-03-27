@@ -14,6 +14,21 @@
 "innerRadius" = 0.16 : 3e23d703
 }
 {
+"name" = "flame noise 256"
+"shader" = "flamenoise"
+"dim" = 256
+"scale" = 100 : 42c80000
+"time" = 4.24303 : 4087c6eb
+"absorption" = 0.73 : 3f3ae148
+"g" = -0.1 : bdcccccf
+"color" = 0.9 : 3f666666 0.9 : 3f666666 0.75 : 3f3fffff
+"densityMult" = 20 : 41a00000
+"scatterColor" = 0.8 : 3f4ccccc 0.85 : 3f599999 0.85 : 3f599999
+"absorbColor" = 0.9 : 3f666666 1 : 3f800000 1 : 3f800000
+"radius" = 0.38 : 3ec28f5a
+"innerRadius" = 0.16 : 3e23d703
+}
+{
 "name" = "sphere noise 64"
 "shader" = "spherenoise"
 "dim" = 64
