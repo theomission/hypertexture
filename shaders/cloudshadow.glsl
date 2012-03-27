@@ -21,6 +21,8 @@ void main()
 
 #define NUM_STEPS 16
 
+#include "shaders/raymarch_common.glsl"
+
 #ifdef FRAGMENT_P
 in vec3 vCoord;
 in vec3 vRay;
@@ -30,7 +32,8 @@ void main()
 {
 	vec3 ray = normalize(vRay);
 	vec3 position = vCoord;
-	vec3 step = ray/NUM_STEPS;
+	vec3 exitPt = GetExitPoint(position, ray);
+	vec3 step = (exitPt - position)/NUM_STEPS;
 	float len = length(step);
 
 	float alpha = 0.0;
@@ -38,9 +41,6 @@ void main()
 
 	for(int i = 0; i < NUM_STEPS; ++i)
 	{
-		if(any(lessThan(position, vec3(0)))) break;
-		if(any(greaterThan(position, vec3(1)))) break;
-
 		float sample = texture(densityMap, position).r;
 		vec3 Tlocal = exp(Tfactor * sample);
 		float alphaT = min(min(Tlocal.x, Tlocal.y), Tlocal.z);
