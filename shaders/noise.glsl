@@ -12,7 +12,9 @@ float rand(vec2 coords)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// noise function is from https://github.com/ashima/webgl-noise/blob/master/src/classicnoise3D.glsl
+// noise function is from:
+// https://github.com/ashima/webgl-noise/blob/master/src/classicnoise3D.glsl
+// See README for copyright info.
 
 vec3 spline_c2(vec3 t)
 {
