@@ -112,7 +112,6 @@ GpuHypertexture::GpuHypertexture(int numCells, const std::shared_ptr<ShaderInfo>
 	// sort of proxy geometry and the shadow intensity depends on the alpha of the cloud.
 	m_fboShadow.AddTexture(GL_R8, GL_RED, GL_UNSIGNED_BYTE);
 	m_fboShadow.Create();
-	std::cout << "fbo shadow " << m_fboShadow.GetTexture(0) << std::endl;
 
 	UpdatePhaseConstants();
 }
