@@ -1,9 +1,9 @@
-"cam.eye" = 685.612 : 442b6728 -262.432 : c3833745 185.112 : 43391c97
-"cam.focus" = 684.706 : 442b2d33 -262.085 : c3830ae7 184.867 : 4338ddff
-"cam.up" = -0.228345 : be69d339 0.0874036 : 3db300a8 0.969649 : 3f783aec
+"cam.eye" = -260.976 : c3827ce7 -126.6 : c2fd332c -82.9979 : c2a5feeb
+"cam.focus" = -260.076 : c38209ba -126.168 : c2fc55d0 -82.9396 : c2a5e112
+"cam.up" = -0.0468262 : bd3fcccc -0.0371342 : bd181a12 0.998213 : 3f7f8add
 "cam.orbitFocus" = 0 : 0 0 : 0 0 : 0
-"cam.orbitStart" = 158.286 : 431e4933 2.43879 : 401c1528 30.9172 : 41f75660
-"cam.orbitRate" = 0.217453 : 3e5eac0e
-"cam.orbitLength" = 617.1 : 441a4666
-"lighting.sundir" = 0.886542 : 3f62f463 -0.268467 : be897488 0.376743 : 3ec0e475
+"cam.orbitStart" = 138.299 : 430a4c8d -77.0309 : c29a0fd2 40.9172 : 4223ab30
+"cam.orbitRate" = 0.017453 : 3c8ef988
+"cam.orbitLength" = 619.1 : 441ac666
+"lighting.sundir" = 0.842214 : 3f579b53 0.109994 : 3de144c2 0.527771 : 3f071c07
 "lighting.suncolor" = 0.95 : 3f733333 0.9 : 3f666666 0.85 : 3f599999

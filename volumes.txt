@@ -1,7 +1,23 @@
 {
+"name" = "flame noise 128"
+"shader" = "flamenoise"
+"dim" = 128
+"scale" = 100 : 42c80000
+"time" = 4.24303 : 4087c6eb
+"absorption" = 0.73 : 3f3ae148
+"g" = -0.1 : bdcccccf
+"color" = 0.9 : 3f666666 0.9 : 3f666666 0.75 : 3f3fffff
+"densityMult" = 20 : 41a00000
+"scatterColor" = 0.8 : 3f4ccccc 0.85 : 3f599999 0.85 : 3f599999
+"absorbColor" = 0.9 : 3f666666 1 : 3f800000 1 : 3f800000
+"radius" = 0.38 : 3ec28f5a
+"innerRadius" = 0.16 : 3e23d703
+}
+{
 "name" = "sphere noise 64"
 "shader" = "spherenoise"
 "dim" = 64
+"scale" = 100 : 42c80000
 "time" = 0.910377 : 3f690e77
 "absorption" = 0.6 : 3f19999a
 "g" = -0.1 : bdcccccd
@@ -16,6 +32,7 @@
 "name" = "sphere noise 128"
 "shader" = "spherenoise"
 "dim" = 128
+"scale" = 100 : 42c80000
 "time" = 1.14761 : 3f92e4f6
 "absorption" = 0.6 : 3f19999a
 "g" = -0.1 : bdcccccd
@@ -30,6 +47,7 @@
 "name" = "sphere noise 256"
 "shader" = "spherenoise"
 "dim" = 256
+"scale" = 100 : 42c80000
 "time" = 1.03421 : 3f8460e5
 "absorption" = 0.6 : 3f19999a
 "g" = -0.1 : bdcccccd
@@ -39,4 +57,18 @@
 "absorbColor" = 0.85 : 3f59999a 0.95 : 3f733333 0.95 : 3f733333
 "radius" = 0.32 : 3ea3d70a
 "innerRadius" = 0.05 : 3d4ccccd
+}
+{
+"name" = "plane noise 128"
+"shader" = "planenoise"
+"dim" = 128
+"scale" = 100 : 42c80000
+"time" = 58.5742 : 426a4bf1
+"absorption" = 0.48 : 3ef5c291
+"g" = -0.2 : be4cccce
+"color" = 0.95 : 3f733333 0.9 : 3f666666 0.85 : 3f599999
+"densityMult" = 17 : 41880000
+"scatterColor" = 0.7 : 3f333333 0.8 : 3f4ccccc 0.95 : 3f733333
+"absorbColor" = 0.95 : 3f733334 0.95 : 3f733333 0.85 : 3f599999
+"width" = 0.1 : 3dcccccd
 }

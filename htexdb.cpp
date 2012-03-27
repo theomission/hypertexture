@@ -10,12 +10,14 @@
 // shaders
 
 static std::shared_ptr<ShaderInfo> g_sphereNoiseShader;
+static std::shared_ptr<ShaderInfo> g_planeNoiseShader;
+static std::shared_ptr<ShaderInfo> g_flameNoiseShader;
 
 enum AnimatedHtexBindType {
 	HTEXBIND_Time,
 	HTEXBIND_Radius,
 	HTEXBIND_InnerRadius,
-	HTEXBIND_Absorption,
+	HTEXBIND_Width,
 };
 
 static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
@@ -23,6 +25,7 @@ static std::vector<CustomShaderAttr> g_animatedHtexUniforms =
 	{ HTEXBIND_Time, "time" },
 	{ HTEXBIND_Radius, "radius", true },
 	{ HTEXBIND_InnerRadius, "innerRadius", true },
+	{ HTEXBIND_Width, "width", true },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,12 +33,20 @@ void htexdb_Init()
 {
 	if(!g_sphereNoiseShader)
 		g_sphereNoiseShader = render_CompileShader("shaders/gen/spherenoise.glsl", g_animatedHtexUniforms);
+	if(!g_planeNoiseShader)
+		g_planeNoiseShader = render_CompileShader("shaders/gen/planenoise.glsl", g_animatedHtexUniforms);
+	if(!g_flameNoiseShader)
+		g_flameNoiseShader = render_CompileShader("shaders/gen/flamenoise.glsl", g_animatedHtexUniforms);
 }
 
 static std::shared_ptr<ShaderInfo> GetShaderFromName(const char* name)
 {
 	if(strcasecmp(name, "spherenoise") == 0)
 		return g_sphereNoiseShader;
+	else if(strcasecmp(name, "planenoise") == 0)
+		return g_planeNoiseShader;
+	else if(strcasecmp(name, "flamenoise") == 0)
+		return g_flameNoiseShader;
 
 	std::cerr << "couldn't find shader for label \"" << name << "\"" << std::endl;
 	return nullptr;
@@ -44,6 +55,7 @@ static std::shared_ptr<ShaderInfo> GetShaderFromName(const char* name)
 ////////////////////////////////////////////////////////////////////////////////
 AnimatedHypertexture::AnimatedHypertexture()
 	: m_numCells(64)
+	, m_scale(100.0f)
 	, m_absorption(0.7)
 	, m_g(-0.1)
 	, m_time(0.f)
@@ -54,12 +66,13 @@ AnimatedHypertexture::AnimatedHypertexture()
 	, m_absorbColor(1,1,1)
 	, m_radius(0.3f)
 	, m_innerRadius(0.1f)
+	, m_width(0.1f)
 {	
 }
 
 void AnimatedHypertexture::Create()
 {
-	m_gpuhtex = std::make_shared<GpuHypertexture>(m_numCells, m_shader, vec3(100.0), m_params);
+	m_gpuhtex = std::make_shared<GpuHypertexture>(m_numCells, m_shader, vec3(m_scale), m_params);
 }
 
 void AnimatedHypertexture::Destroy()
@@ -70,6 +83,7 @@ void AnimatedHypertexture::Destroy()
 bool AnimatedHypertexture::Valid() const
 {
 	return m_numCells > 0 &&
+		m_scale > 1.f && 
 		IsPower2(m_numCells) &&
 		m_shader ;
 }
@@ -103,6 +117,7 @@ std::shared_ptr<SubmenuMenuItem> AnimatedHypertexture::CreateMenu()
 					m_time = 0.f; 
 					m_lastUpdateTime = 0.f; 
 				}),
+			std::make_shared<FloatSliderMenuItem>("scale", &m_scale),
 			std::make_shared<FloatSliderMenuItem>("time slider", &m_time),
 			std::make_shared<FloatSliderMenuItem>("absorption", 
 				[this]() { return m_absorption; },
@@ -125,6 +140,15 @@ std::shared_ptr<SubmenuMenuItem> AnimatedHypertexture::CreateMenu()
 		});
 
 	if(m_shader == g_sphereNoiseShader)
+	{
+		menu->AppendChild(std::make_shared<FloatSliderMenuItem>("outer radius", &m_radius, 0.1f));
+		menu->AppendChild(std::make_shared<FloatSliderMenuItem>("inner radius", &m_innerRadius, 0.1f));
+	}
+	else if(m_shader == g_planeNoiseShader)
+	{
+		menu->AppendChild(std::make_shared<FloatSliderMenuItem>("width", &m_width, 0.1f));
+	}
+	else if(m_shader == g_flameNoiseShader)
 	{
 		menu->AppendChild(std::make_shared<FloatSliderMenuItem>("outer radius", &m_radius, 0.1f));
 		menu->AppendChild(std::make_shared<FloatSliderMenuItem>("inner radius", &m_innerRadius, 0.1f));
@@ -189,15 +213,20 @@ std::vector<std::shared_ptr<AnimatedHypertexture>> ParseHtexFile(const char* fil
 					htex->m_params->AddParam("time", ShaderParams::P_Float1, &htex->m_time);
 					htex->m_params->AddParam("radius", ShaderParams::P_Float1, &htex->m_radius);
 					htex->m_params->AddParam("innerRadius", ShaderParams::P_Float1, &htex->m_innerRadius);
+					htex->m_params->AddParam("width", ShaderParams::P_Float1, &htex->m_width);
 				}
 			} else if(strcasecmp(bufName, "dim") == 0) {
 				htex->m_numCells = parser.GetInt();
+			} else if(strcasecmp(bufName, "scale") == 0) {
+				htex->m_scale = parser.GetFloat();
 			} else if(strcasecmp(bufName, "time") == 0) {
 				htex->m_lastUpdateTime = htex->m_time = parser.GetFloat();
 			} else if(strcasecmp(bufName, "radius") == 0) {
 				htex->m_radius = parser.GetFloat();
 			} else if(strcasecmp(bufName, "innerRadius") == 0) {
 				htex->m_innerRadius = parser.GetFloat();
+			} else if(strcasecmp(bufName, "width") == 0) {
+				htex->m_width = parser.GetFloat();
 			} else if(strcasecmp(bufName, "absorption") == 0) {
 				htex->m_absorption = parser.GetFloat();
 			} else if(strcasecmp(bufName, "g") == 0) {
@@ -257,6 +286,7 @@ void SaveHtexFile(const char* filename, const std::vector<std::shared_ptr<Animat
 		w.String("name"); w.Token("="); w.String(animHtex->m_name.c_str()); w.Nl();
 		w.String("shader"); w.Token("="); w.String(animHtex->m_shaderName.c_str()); w.Nl();
 		w.String("dim"); w.Token("="); w.Int(animHtex->m_numCells); w.Nl();
+		w.String("scale"); w.Token("="); w.Float(animHtex->m_scale); w.Nl();
 		w.String("time"); w.Token("="); w.Float(animHtex->m_time); w.Nl();
 		w.String("absorption"); w.Token("="); w.Float(animHtex->m_absorption); w.Nl();
 		w.String("g"); w.Token("="); w.Float(animHtex->m_g); w.Nl();
@@ -269,9 +299,25 @@ void SaveHtexFile(const char* filename, const std::vector<std::shared_ptr<Animat
 			w.Float(animHtex->m_absorbColor.g); w.Float(animHtex->m_absorbColor.b); w.Nl();
 	
 		// variables for shader types
-		w.String("radius"); w.Token("="); w.Float(animHtex->m_radius); w.Nl();
-		w.String("innerRadius"); w.Token("="); w.Float(animHtex->m_innerRadius); w.Nl();
+		if(animHtex->m_shader == g_sphereNoiseShader)
+		{
+			w.String("radius"); w.Token("="); w.Float(animHtex->m_radius); w.Nl();
+			w.String("innerRadius"); w.Token("="); w.Float(animHtex->m_innerRadius); w.Nl();
+		}
+		else if(animHtex->m_shader == g_planeNoiseShader)
+		{
+			w.String("width"); w.Token("="); w.Float(animHtex->m_width); w.Nl();
+		}
+		else if(animHtex->m_shader == g_flameNoiseShader)
+		{
+			w.String("radius"); w.Token("="); w.Float(animHtex->m_radius); w.Nl();
+			w.String("innerRadius"); w.Token("="); w.Float(animHtex->m_innerRadius); w.Nl();
+		}
+
 		w.Token("}"); w.Nl();
 	}
+
+	if(w)
+		std::cout << filename << " saved." << std::endl;
 }
 

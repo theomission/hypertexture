@@ -38,6 +38,7 @@ public:
 
 	// Creation parameters
 	int m_numCells;
+	float m_scale;
 	std::string m_name;
 	std::string m_shaderName;
 	float m_absorption;
@@ -50,8 +51,12 @@ public:
 	Color m_absorbColor;
 
 	// other variables for shaders that are specific to the shader
+	// spherenoise
 	float m_radius;
 	float m_innerRadius;
+
+	// planenoise
+	float m_width;
 };
 
 void htexdb_Init();
