@@ -342,9 +342,9 @@ mat4 ComputeDirShadowView(const vec3& focus, const vec3 &dir, float distance)
 mat4 MakeCoordinateScale(float scale, float add)
 {
 	return mat4(
-		0.5, 0, 0, 0,
-		0, 0.5, 0, 0,
-		0, 0, 0.5, 0,
-		0.5, 0.5, 0.5, 1);
+		scale, 0, 0, 0,
+		0, scale, 0, 0,
+		0, 0, scale, 0,
+		add, add, add, 1);
 }
 
