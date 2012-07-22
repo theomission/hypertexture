@@ -47,8 +47,9 @@ void main()
 	float diffuseAmount = max(0,sunDotN);
 	float specularAmount = max(0, dot(H, N)) ;
 	float isVisible = float(sunDotN > 0.0);
-	specularAmount *= isVisible * float(lightVisible >= 1.0);
+	lightVisible *= isVisible;
 	specularAmount = pow(specularAmount, shininess);
+	specularAmount *= lightVisible;
 
 	vec3 diffuseLight = Kd * diffuseAmount * sunColor;
 	vec3 specularLight = Ks * specularAmount * sunColor;

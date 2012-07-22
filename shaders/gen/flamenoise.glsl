@@ -18,7 +18,7 @@ float density(vec3 pt)
 
 	float falloff = 1.0;
 	falloff *= exp( -3.f * max(pt.z - 0.1,0) );
-	
+
 	float r = max(radius * falloff + n,0) ;
 	float ir = max(innerRadius * falloff + n2,0) ;
 

@@ -36,18 +36,19 @@ void main()
 	vec3 step = (exitPt - position)/NUM_STEPS;
 	float len = length(step);
 
-	float alpha = 0.0;
 	vec3 Tfactor = -absorption * len * absorptionColor * densityMult;
 
+	float sampleSum = 0.0;
 	for(int i = 0; i < NUM_STEPS; ++i)
 	{
 		float sample = texture(densityMap, position).r;
-		vec3 Tlocal = exp(Tfactor * sample);
-		float alphaT = min(min(Tlocal.x, Tlocal.y), Tlocal.z);
-		alpha = alpha + (1 - alphaT) * (1 - alpha);
-		
+		sampleSum += sample;
 		position += step;
 	}
+
+	vec3 T = exp(Tfactor * sampleSum);
+	float avgT = (T.x + T.y + T.z) / 3.0;
+	float alpha = 1.0 - avgT;
 
 	outShadow = alpha;
 }

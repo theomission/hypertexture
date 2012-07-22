@@ -62,7 +62,6 @@ void main()
 	float len = length(step);
 
 	vec3 curColor = vec3(0);
-	float alpha = 0.0;
 	vec3 T = vec3(1.0);
 	vec3 Tfactor = -absorption * len * absorptionColor * densityMult;
 	vec3 colorFactor = color * len * densityMult;
@@ -76,13 +75,15 @@ void main()
 		vec3 colorIn = T * GetLight(position, -ray) * colorFactor * sample;
 		curColor += colorIn;
 
-		float alphaT = min(min(Tlocal.x, Tlocal.y), Tlocal.z);
-		alpha = alpha + (1 - alphaT) * (1 - alpha);
-		
 		if(all(lessThan(T,vec3(0.001))))
 			break;
 		position += step;
 	}
+
+	// alpha is just 1-T for the final transmittance value
+	float avgT = (T.x + T.y + T.z) / 3.0;
+	float alpha = 1 - avgT;
+
 	outColor = vec4(curColor, alpha);
 }
 #endif
